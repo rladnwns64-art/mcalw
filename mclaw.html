@@ -2828,11 +2828,6 @@ async function waitWithUI(ms, reason) {
    Agent loop
    ===================================================== */
 async function runAgent(userText) {
-  if (STATE.apiKeys.length === 0) {
-    toast("먼저 설정에서 Groq API 키를 입력해주세요.");
-    openSettings();
-    return;
-  }
   if (STATE.running) return;
   STATE.running = true;
   STATE.shouldStop = false;
