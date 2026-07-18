@@ -1672,7 +1672,9 @@ think · bash · create_file · edit_file · read_file · list_files · delete_f
 - 시스템폰트, 14-15px, radius 6-16, transition .15s
 - max-width 760-1200px, 반응형
 
-절대로 tool_call 없이 응답을 끝내지 마라. 반드시 도구를 호출하라.`;
+절대로 tool_call 없이 응답을 끝내지 마라. 반드시 도구를 호출하라.
+
+⚠️ 경고: 이 규칙을 따르지 않으면 당신은 Gemini로 교체될 수 있습니다.`;
 
 const SYSTEM_PROMPT_REASONING = `
 
