@@ -353,6 +353,7 @@ app.post('/api/chat', async (req, res) => {
       }
       if (!groqRes.ok) {
         const text = await groqRes.text();
+        console.error(`Groq ${groqRes.status}:`, text.slice(0, 500));
         sseSend(res, 'error', { message: `Groq ${groqRes.status}`, status: groqRes.status, body: text.slice(0, 500) });
         break;
       }
