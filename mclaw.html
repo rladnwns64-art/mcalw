@@ -2626,9 +2626,9 @@ async function callGroq(messages, retryCount = 0, opts = {}) {
     model: STATE.model,
     messages: [{ role: "system", content: getSystemPrompt() }, ...messages],
     tools: TOOLS,
-    tool_choice: "auto",
     temperature: 0.6,
     max_tokens: Math.max(800, Math.floor(2500 * shrink)),
+    parallel_tool_calls: false,
   };
 
   let result = null, errMsg = null;
