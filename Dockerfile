@@ -1,5 +1,5 @@
 # MCLAW backend - Node.js + 개발 도구 포함
-FROM node:20-slim
+FROM node:22-slim
 
 # AI 에이전트가 워크스페이스에서 사용할 도구들
 RUN apt-get update && apt-get install -y \
