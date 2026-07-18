@@ -1415,7 +1415,7 @@ const $$ = (sel) => document.querySelectorAll(sel);
 
 const STATE = {
   // 서버 모드 (백엔드 프록시 사용)
-  serverUrl: localStorage.getItem("mclaw_server_url") || "https://mclaw.onrender.com",
+  serverUrl: localStorage.getItem("mclaw_server_url") || window.location.origin,
   supabaseUrl: localStorage.getItem("mclaw_supabase_url") || "https://auarymsswtrkfozfjehw.supabase.co",
   supabaseKey: localStorage.getItem("mclaw_supabase_key") || "sb_publishable_eP_w_XE-nENrIJQkshPXUQ_4STTN_kn",
   session: null,
