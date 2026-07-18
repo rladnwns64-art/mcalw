@@ -1,3721 +1,575 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>MCLAW — Autonomous Coding Agent</title>
-<style>
-/* ==============================
-   Claude-inspired design system
-   ============================== */
-:root {
-  --bg:           #FAF9F5;
-  --bg-2:         #F4F2EA;
-  --bg-3:         #EAE7DA;
-  --panel:        #FFFFFE;
-  --text:         #1A1918;
-  --text-2:       #5D5D5A;
-  --text-3:       #9A9893;
-  --border:       #E5E2D6;
-  --border-2:     #C8C4B5;
-  --accent:       #C96442;
-  --accent-2:     #B5573A;
-  --accent-soft:  #F7EDE6;
-  --code-bg:      #F1EEE3;
-  --user-bg:      #EFECDE;
-  --ok:           #4A9D5F;
-  --warn:         #D4A14E;
-  --err:          #C84B4B;
-  --shadow:       0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.04);
-}
-[data-theme="dark"] {
-  --bg:           #1F1E1D;
-  --bg-2:         #262624;
-  --bg-3:         #2E2D2B;
-  --panel:        #262624;
-  --text:         #F5F4ED;
-  --text-2:       #B8B6B0;
-  --text-3:       #807E78;
-  --border:       #353330;
-  --border-2:     #4A4844;
-  --accent:       #E5A088;
-  --accent-2:     #D08F77;
-  --accent-soft:  #3D2D27;
-  --code-bg:      #181816;
-  --user-bg:      #2E2D2B;
-  --shadow:       0 1px 2px rgba(0,0,0,.2), 0 8px 24px rgba(0,0,0,.25);
-}
-
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
-body {
-  font-family: "Pretendard", "Apple SD Gothic Neo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  overflow: hidden;
-  font-size: 14.5px;
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-}
-
-button, input, textarea, select { font: inherit; color: inherit; }
-button { cursor: pointer; background: none; border: none; }
-
-/* Custom scrollbars (가장자리에서 떨어지게) */
-::-webkit-scrollbar { width: 12px; height: 12px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--border-2);
-  border: 3px solid transparent;
-  background-clip: content-box;
-  border-radius: 999px;
-  min-height: 40px;
-}
-::-webkit-scrollbar-thumb:hover { background-color: var(--text-3); background-clip: content-box; }
-
-/* 코드/패널 안의 스크롤바는 더 또렷하게 */
-.scrollbar-visible::-webkit-scrollbar { width: 10px; height: 10px; }
-.scrollbar-visible::-webkit-scrollbar-track { background: transparent; }
-.scrollbar-visible::-webkit-scrollbar-thumb {
-  background: var(--text-3);
-  border: 2px solid transparent;
-  background-clip: content-box;
-  border-radius: 999px;
-  opacity: .6;
-}
-.scrollbar-visible::-webkit-scrollbar-thumb:hover { background-color: var(--text-2); background-clip: content-box; }
-* { scrollbar-color: var(--border-2) transparent; scrollbar-width: thin; }
-.scrollbar-visible { scrollbar-color: var(--text-3) transparent; scrollbar-width: thin; }
-
-/* ==============================
-   Layout
-   ============================== */
-.app {
-  display: grid;
-  grid-template-columns: 260px 1fr 5px 480px;
-  grid-template-rows: 100vh;
-  height: 100vh;
-  overflow: hidden;
-  background: var(--bg);
-  transition: grid-template-columns .25s ease;
-}
-.app.no-artifact { grid-template-columns: 260px 1fr 0 0; }
-.app.no-sidebar { grid-template-columns: 0 1fr 5px 480px; }
-.app.no-sidebar.no-artifact { grid-template-columns: 0 1fr 0 0; }
-.app.no-artifact .resizer,
-.app.no-artifact .artifact { display: none; }
-
-.sidebar, .chat, .artifact { min-height: 0; min-width: 0; }
-
-/* ==============================
-   Sidebar
-   ============================== */
-.sidebar {
-  background: var(--bg-2);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.sb-head {
-  padding: 18px 16px 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.logo {
-  width: 32px; height: 32px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #262624, #3A3735);
-  display: grid; place-items: center;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.08);
-  flex-shrink: 0;
-}
-.logo::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 28% 28%, var(--accent), transparent 70%);
-  opacity: .6;
-  pointer-events: none;
-}
-.logo svg { width: 15px; height: 15px; position: relative; z-index: 1; }
-.brand { font-weight: 600; letter-spacing: -.015em; font-size: 14.5px; }
-.brand-name {
-  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
-  font-weight: 600;
-  font-size: 13.5px;
-  letter-spacing: .08em;
-  color: var(--text);
-}
-.brand small { display: block; color: var(--text-3); font-size: 11px; font-weight: 400; margin-top: 1px; letter-spacing: 0; font-family: inherit; }
-
-.sb-actions { padding: 4px 10px 8px; display: flex; flex-direction: column; gap: 2px; }
-.sb-btn {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 12px; border-radius: 9px;
-  color: var(--text-2); font-size: 13.5px;
-  transition: background .12s, color .12s;
-  text-align: left;
-}
-.sb-btn:hover { background: var(--bg-3); color: var(--text); }
-.sb-btn.primary {
-  background: var(--text);
-  color: var(--bg);
-}
-.sb-btn.primary:hover { background: var(--text); color: var(--bg); opacity: .9; }
-
-.sb-section {
-  padding: 14px 14px 6px;
-  font-size: 10.5px;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  font-weight: 600;
-}
-.sb-scroll { flex: 1; overflow-y: auto; padding: 0 8px; }
-.sb-scroll { scrollbar-color: var(--border-2) transparent; }
-.history-item {
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--text-2);
-  cursor: pointer;
-  display: flex; align-items: center; gap: 8px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  transition: background .12s, color .12s;
-}
-.history-item:hover { background: var(--bg-3); color: var(--text); }
-.history-item.active { background: var(--accent-soft); color: var(--accent-2); }
-.history-item.active svg { color: var(--accent-2); }
-
-.sb-foot {
-  border-top: 1px solid var(--border);
-  padding: 10px 12px;
-  display: flex; gap: 4px;
-}
-.icon-btn {
-  width: 32px; height: 32px;
-  border-radius: 8px;
-  display: grid; place-items: center;
-  color: var(--text-2);
-  transition: background .12s, color .12s;
-}
-.icon-btn:hover { background: var(--bg-3); color: var(--text); }
-.icon-btn svg { width: 16px; height: 16px; stroke-width: 2; }
-
-/* ==============================
-   Chat column
-   ============================== */
-.chat {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  background: var(--bg);
-}
-.chat-head {
-  height: 52px;
-  flex-shrink: 0;
-  padding: 0 22px;
-  border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: space-between;
-  background: var(--bg);
-}
-.chat-title { font-weight: 500; font-size: 14px; color: var(--text); display: flex; align-items: center; gap: 8px; }
-.chat-title .badge {
-  display: inline-flex; align-items: center;
-  background: var(--accent-soft);
-  color: var(--accent-2);
-  padding: 3px 9px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 500;
-  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
-  letter-spacing: -.01em;
-}
-.chat-actions { display: flex; gap: 2px; }
-
-.messages {
-  flex: 1 1 0;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 28px 4px 24px 4px;
-}
-.msg-wrap { max-width: 760px; margin: 0 auto; padding: 0 28px; }
-
-.msg {
-  margin-bottom: 22px;
-  animation: fadeIn .25s ease;
-}
-@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-
-.msg.user .bubble {
-  background: var(--user-bg);
-  border-radius: 16px;
-  padding: 12px 16px;
-  margin-left: auto;
-  max-width: 78%;
-  width: fit-content;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  line-height: 1.55;
-}
-
-.msg.assistant .bubble {
-  padding: 2px 0;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  line-height: 1.65;
-  color: var(--text);
-}
-
-.msg.assistant .bubble code {
-  background: var(--code-bg);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
-  font-size: 12.5px;
-  border: 1px solid var(--border);
-}
-
-.msg-role {
-  display: flex; align-items: center; gap: 8px;
-  margin-bottom: 8px;
-  font-size: 12.5px;
-  color: var(--text-2);
-  font-weight: 500;
-}
-.role-avatar {
-  width: 24px; height: 24px;
-  border-radius: 7px;
-  display: grid; place-items: center;
-  font-size: 11px; font-weight: 600;
-  color: white;
-  letter-spacing: -.02em;
-  position: relative;
-  overflow: hidden;
-}
-.role-avatar.assistant {
-  background: linear-gradient(135deg, #262624, #3A3735);
-}
-.role-avatar.assistant::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 28% 28%, var(--accent), transparent 70%);
-  opacity: .6;
-}
-.role-avatar.assistant svg { width: 12px; height: 12px; position: relative; z-index: 1; }
-.role-avatar.user {
-  background: var(--text-2);
-}
-
-/* Tool call card */
-.tool-card {
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  margin: 10px 0;
-  overflow: hidden;
-  background: var(--panel);
-  transition: border-color .2s, box-shadow .2s;
-  font-size: 13px;
-}
-.tool-card:hover { box-shadow: 0 1px 3px rgba(0,0,0,.05); }
-.tool-card.running {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-.tool-card.success { border-color: var(--border); }
-.tool-card.error {
-  border-color: var(--err);
-  box-shadow: 0 0 0 3px rgba(200,75,75,.08);
-}
-
-.tool-head {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px;
-  cursor: pointer;
-  user-select: none;
-}
-.tool-icon {
-  width: 24px; height: 24px;
-  border-radius: 7px;
-  background: var(--bg-3);
-  display: grid; place-items: center;
-  flex-shrink: 0;
-  color: var(--text-2);
-}
-.tool-icon svg { width: 13px; height: 13px; }
-.tool-card.running .tool-icon {
-  background: var(--accent-soft);
-  color: var(--accent-2);
-}
-.tool-card.running .tool-icon svg:not(.no-spin) { animation: spin 1.2s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.tool-card.success .tool-icon { background: rgba(74,157,95,.12); color: var(--ok); }
-.tool-card.error .tool-icon { background: rgba(200,75,75,.12); color: var(--err); }
-
-.tool-name {
-  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text);
-  letter-spacing: -.005em;
-}
-.tool-summary {
-  font-size: 12.5px;
-  color: var(--text-3);
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
-}
-.tool-toggle {
-  width: 20px; height: 20px;
-  display: grid; place-items: center;
-  color: var(--text-3);
-  transition: transform .2s;
-}
-.tool-card.open .tool-toggle { transform: rotate(90deg); }
-.tool-card.system .tool-toggle { display: none; }
-.tool-card.system .tool-head { cursor: default; }
-
-.tool-body {
-  border-top: 1px solid var(--border);
-  padding: 12px 14px;
-  background: var(--bg-2);
-  max-height: 320px;
-  overflow: auto;
-  display: none;
-}
-.tool-card.open .tool-body { display: block; }
-
-.tc-row {
-  display: grid;
-  grid-template-columns: 70px 1fr;
-  gap: 10px;
-  padding: 4px 0;
-  font-size: 12.5px;
-  align-items: start;
-}
-.tc-row + .tc-row { border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 4px; }
-.tc-key {
-  color: var(--text-3);
-  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
-  font-size: 11.5px;
-  text-transform: lowercase;
-  padding-top: 2px;
-}
-.tc-val {
-  color: var(--text);
-  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
-  word-break: break-word;
-  white-space: pre-wrap;
-}
-.tc-val.code {
-  background: var(--code-bg);
-  padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 11.5px;
-  line-height: 1.55;
-  max-height: 200px;
-  overflow: auto;
-  border: 1px solid var(--border);
-}
-.tc-expand {
-  color: var(--accent-2);
-  font-size: 11px;
-  cursor: pointer;
-  margin-top: 4px;
-  display: inline-block;
-}
-.tc-expand:hover { text-decoration: underline; }
-
-.tc-result {
-  margin-top: 6px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
-}
-.tc-result-ok { color: var(--ok); }
-.tc-result-err { color: var(--err); }
-
-/* Thinking dots */
-.thinking {
-  display: inline-flex; gap: 4px;
-  align-items: center;
-  padding: 4px 0;
-}
-.thinking span {
-  width: 6px; height: 6px;
-  background: var(--text-3);
-  border-radius: 50%;
-  animation: bounce 1.2s infinite ease-in-out;
-}
-.thinking span:nth-child(2) { animation-delay: .15s; }
-.thinking span:nth-child(3) { animation-delay: .3s; }
-@keyframes bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: .4; }
-  30% { transform: translateY(-4px); opacity: 1; }
-}
-
-/* Input */
-.composer {
-  flex-shrink: 0;
-  padding: 12px 22px 20px;
-  background: var(--bg);
-}
-.composer-inner {
-  max-width: 760px; margin: 0 auto;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 12px 28px rgba(0,0,0,.04);
-  padding: 8px 8px 8px 18px;
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  transition: border-color .15s, box-shadow .15s;
-}
-.composer-inner:focus-within {
-  border-color: var(--border-2);
-  box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.06);
-}
-.composer textarea {
-  flex: 1;
-  background: transparent;
-  border: none; outline: none;
-  resize: none;
-  font-family: inherit;
-  font-size: 14.5px;
-  color: var(--text);
-  padding: 10px 0;
-  max-height: 200px;
-  min-height: 24px;
-  line-height: 1.5;
-}
-.composer textarea::placeholder { color: var(--text-3); }
-
-.send-btn {
-  width: 36px; height: 36px;
-  border-radius: 11px;
-  background: var(--text);
-  color: var(--bg);
-  display: grid; place-items: center;
-  transition: background .15s, transform .12s;
-  flex-shrink: 0;
-}
-.send-btn:hover { transform: translateY(-1px); }
-.send-btn:disabled { background: var(--border-2); cursor: not-allowed; transform: none; }
-.send-btn svg { width: 15px; height: 15px; stroke-width: 2.5; }
-
-.stop-btn {
-  width: 36px; height: 36px;
-  border-radius: 11px;
-  background: var(--text);
-  color: var(--bg);
-  display: grid; place-items: center;
-  flex-shrink: 0;
-}
-.stop-btn svg { width: 13px; height: 13px; }
-
-.composer-hint {
-  max-width: 760px; margin: 8px auto 0;
-  font-size: 11px;
-  color: var(--text-3);
-  text-align: center;
-  letter-spacing: -.005em;
-}
-
-/* Empty state */
-.empty {
-  flex: 1;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  padding: 40px;
-  text-align: center;
-}
-.empty h1 {
-  font-size: 30px;
-  font-weight: 500;
-  letter-spacing: -.025em;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  margin-bottom: 10px;
-  line-height: 1.2;
-}
-.empty p {
-  color: var(--text-2);
-  max-width: 460px;
-  margin-bottom: 28px;
-  line-height: 1.55;
-  font-size: 14px;
-}
-.suggestions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  width: 100%;
-  max-width: 580px;
-}
-.suggest {
-  text-align: left;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--panel);
-  font-size: 12.5px;
-  color: var(--text-2);
-  transition: border-color .15s, background .15s, transform .12s;
-  line-height: 1.5;
-}
-.suggest:hover {
-  border-color: var(--border-2);
-  background: var(--bg-2);
-  transform: translateY(-1px);
-}
-.suggest strong {
-  display: block;
-  color: var(--text);
-  margin-bottom: 3px;
-  font-weight: 500;
-  font-size: 13.5px;
-  letter-spacing: -.005em;
-}
-
-/* ==============================
-   Artifact panel
-   ============================== */
-.artifact {
-  background: var(--bg-2);
-  border-left: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.art-head {
-  height: 52px;
-  flex-shrink: 0;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--bg-2);
-}
-.tab {
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--text-2);
-  font-weight: 500;
-  transition: background .12s, color .12s;
-}
-.tab:hover { background: var(--bg-3); color: var(--text); }
-.tab.active { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.04); }
-.art-spacer { flex: 1; }
-
-.art-body {
-  flex: 1;
-  overflow: hidden;
-  position: relative;
-}
-.art-pane {
-  position: absolute; inset: 0;
-  display: none;
-}
-.art-pane.active { display: flex; flex-direction: column; }
-
-#previewFrame {
-  width: 100%; height: 100%;
-  border: none;
-  background: white;
-}
-
-.files-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-}
-.file-item {
-  padding: 9px 12px;
-  border-radius: 8px;
-  display: flex; align-items: center; gap: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text-2);
-  transition: background .12s, color .12s;
-}
-.file-item:hover { background: var(--bg-3); color: var(--text); }
-.file-item.active { background: var(--accent-soft); color: var(--accent-2); font-weight: 500; }
-.file-item.active svg { color: var(--accent-2); }
-.file-item svg { width: 14px; height: 14px; color: var(--text-3); flex-shrink: 0; }
-.file-item .size { margin-left: auto; font-size: 10.5px; color: var(--text-3); font-family: "SF Mono", "JetBrains Mono", Consolas, monospace; }
-
-.code-view {
-  flex: 1;
-  overflow: auto;
-  padding: 16px 18px;
-  background: var(--code-bg);
-  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  white-space: pre;
-  color: var(--text);
-  letter-spacing: -.005em;
-}
-
-.no-art {
-  flex: 1;
-  display: grid; place-items: center;
-  color: var(--text-3);
-  font-size: 13px;
-  padding: 24px;
-  text-align: center;
-  line-height: 1.55;
-}
-
-/* ==============================
-   Modal
-   ============================== */
-.modal-bg {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,.4);
-  display: none;
-  align-items: center; justify-content: center;
-  z-index: 100;
-  backdrop-filter: blur(4px);
-}
-.modal-bg.open { display: flex; }
-.modal {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 24px;
-  width: 440px;
-  max-width: 90vw;
-  box-shadow: 0 20px 60px rgba(0,0,0,.25);
-  animation: pop .2s ease;
-}
-@keyframes pop { from { transform: scale(.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-.modal h2 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
-.modal p { color: var(--text-2); font-size: 13px; margin-bottom: 18px; }
-.field { margin-bottom: 14px; }
-.field label {
-  display: block; font-size: 12px;
-  color: var(--text-2);
-  margin-bottom: 6px;
-  font-weight: 500;
-}
-.field input, .field .custom-select {
-  width: 100%;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg);
-  outline: none;
-  transition: border-color .15s;
-}
-.field input:focus { border-color: var(--accent); }
-
-/* custom select */
-.custom-select {
-  position: relative;
-  cursor: pointer;
-  user-select: none;
-  display: flex; align-items: center;
-}
-.custom-select::after {
-  content: "";
-  position: absolute; right: 14px; top: 50%;
-  width: 7px; height: 7px;
-  border-right: 1.5px solid var(--text-2);
-  border-bottom: 1.5px solid var(--text-2);
-  transform: translateY(-70%) rotate(45deg);
-  transition: transform .2s;
-}
-.custom-select.open::after { transform: translateY(-30%) rotate(-135deg); }
-.cs-list {
-  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 4px;
-  display: none;
-  z-index: 10;
-  box-shadow: var(--shadow);
-  max-height: 240px;
-  overflow: auto;
-}
-.custom-select.open .cs-list { display: block; }
-.cs-opt {
-  padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-}
-.cs-opt:hover { background: var(--bg-2); }
-.cs-opt.selected { background: var(--accent-soft); color: var(--accent-2); }
-.cs-opt small { color: var(--text-3); display: block; font-size: 11px; margin-top: 1px; }
-
-.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
-.btn {
-  padding: 9px 16px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all .15s;
-}
-.btn-ghost { color: var(--text-2); }
-.btn-ghost:hover { background: var(--bg-2); color: var(--text); }
-.btn-primary { background: var(--accent); color: white; }
-.btn-primary:hover { background: var(--accent-2); }
-
-/* Toast */
-.toast {
-  position: fixed;
-  bottom: 24px; left: 50%;
-  transform: translateX(-50%) translateY(80px);
-  background: var(--text);
-  color: var(--bg);
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 13px;
-  transition: transform .25s ease;
-  z-index: 1000;
-  box-shadow: 0 8px 24px rgba(0,0,0,.2);
-}
-.toast.show { transform: translateX(-50%) translateY(0); }
-
-/* think 카드는 미묘한 스타일 */
-.tool-card[data-name="think"] {
-  background: var(--bg-2);
-  border-color: var(--border);
-}
-.tool-card[data-name="think"] .tool-icon {
-  background: transparent;
-  color: var(--text-3);
-}
-.tool-card[data-name="think"] .tool-name {
-  color: var(--text-3);
-  font-family: inherit;
-  font-style: italic;
-  font-size: 12px;
-}
-.tool-card[data-name="think"] .tool-summary {
-  color: var(--text-2);
-  font-family: inherit;
-  font-style: italic;
-  font-size: 13px;
-  white-space: normal;
-}
-.tool-card[data-name="think"].running .tool-icon svg { animation: none; }
-.tool-card[data-name="think"] .tool-toggle { display: none; }
-.tool-card[data-name="think"] .tool-head { cursor: default; padding: 6px 14px; }
-
-/* Toggle switch */
-.switch {
-  width: 38px; height: 22px;
-  background: var(--border-2);
-  border-radius: 999px;
-  position: relative;
-  cursor: pointer;
-  transition: background .18s;
-  flex-shrink: 0;
-}
-.switch::after {
-  content: "";
-  position: absolute;
-  top: 2px; left: 2px;
-  width: 18px; height: 18px;
-  background: white;
-  border-radius: 50%;
-  transition: transform .22s cubic-bezier(.4,0,.2,1);
-  box-shadow: 0 1px 3px rgba(0,0,0,.15);
-}
-.switch.on { background: var(--accent); }
-.switch.on::after { transform: translateX(16px); }
-
-/* =====================================================
-   Progress bar — 실행 중 인디케이터
-   ===================================================== */
-.progress-bar {
-  height: 2px;
-  background: transparent;
-  position: relative;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-.progress-bar.running::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  width: 40%;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  animation: progSlide 1.5s cubic-bezier(.4,0,.2,1) infinite;
-}
-@keyframes progSlide {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(350%); }
-}
-
-/* =====================================================
-   Resizer
-   ===================================================== */
-.resizer {
-  cursor: col-resize;
-  background: transparent;
-  transition: background .15s;
-  position: relative;
-}
-.resizer::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 2px;
-  height: 32px;
-  background: var(--border-2);
-  border-radius: 999px;
-  opacity: 0;
-  transition: opacity .15s;
-}
-.resizer:hover::before { opacity: 1; }
-.resizer.dragging { background: var(--accent-soft); }
-.resizer.dragging::before { opacity: 1; background: var(--accent); }
-
-/* =====================================================
-   Viewport toggle (미리보기 크기)
-   ===================================================== */
-.viewport-toggle {
-  display: flex; gap: 2px;
-  background: var(--bg-3);
-  border-radius: 8px;
-  padding: 2px;
-}
-.viewport-toggle button {
-  padding: 5px 8px;
-  border-radius: 6px;
-  color: var(--text-3);
-  transition: background .12s, color .12s;
-  display: grid; place-items: center;
-}
-.viewport-toggle button:hover { color: var(--text-2); }
-.viewport-toggle button.active {
-  background: var(--panel);
-  color: var(--text);
-  box-shadow: 0 1px 2px rgba(0,0,0,.05);
-}
-.viewport-toggle svg { width: 13px; height: 13px; }
-
-.preview-wrap {
-  flex: 1;
-  overflow: auto;
-  background: var(--bg-3);
-  display: flex; align-items: flex-start; justify-content: center;
-  padding: 0;
-}
-.preview-wrap.centered { padding: 16px; }
-#previewFrame {
-  width: 100%; height: 100%;
-  border: none;
-  background: white;
-  transition: width .2s, height .2s;
-}
-#previewFrame.mobile { width: 375px; height: 667px; border-radius: 12px; box-shadow: 0 0 0 6px #1A1918, 0 8px 24px rgba(0,0,0,.15); }
-#previewFrame.tablet { width: 768px; height: 1024px; border-radius: 10px; box-shadow: 0 0 0 4px #1A1918, 0 8px 24px rgba(0,0,0,.15); max-height: calc(100vh - 130px); }
-#previewFrame.desktop { width: 100%; height: 100%; }
-
-/* =====================================================
-   Command palette (⌘K)
-   ===================================================== */
-.cmd-palette {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.35);
-  backdrop-filter: blur(4px);
-  z-index: 200;
-  display: none;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 12vh;
-}
-.cmd-palette.open { display: flex; animation: fadeIn .15s ease; }
-.cmd-inner {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  width: 580px;
-  max-width: 92vw;
-  box-shadow: 0 20px 60px rgba(0,0,0,.25);
-  animation: pop .18s ease;
-  overflow: hidden;
-  display: flex; flex-direction: column;
-}
-.cmd-input-wrap {
-  display: flex; align-items: center; gap: 10px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--border);
-}
-.cmd-input-wrap svg { width: 16px; height: 16px; color: var(--text-3); flex-shrink: 0; }
-.cmd-input {
-  flex: 1;
-  padding: 15px 0;
-  border: none; outline: none;
-  background: transparent;
-  font-size: 15px;
-  font-family: inherit;
-  color: var(--text);
-}
-.cmd-input::placeholder { color: var(--text-3); }
-.cmd-list {
-  max-height: 380px;
-  overflow-y: auto;
-  padding: 6px;
-}
-.cmd-section-head {
-  font-size: 10.5px;
-  color: var(--text-3);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  padding: 10px 12px 4px;
-}
-.cmd-item {
-  display: flex; align-items: center; gap: 12px;
-  padding: 9px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background .1s;
-}
-.cmd-item:hover, .cmd-item.selected { background: var(--accent-soft); }
-.cmd-icon-box {
-  width: 30px; height: 30px;
-  border-radius: 7px;
-  background: var(--bg-2);
-  display: grid; place-items: center;
-  color: var(--text-2);
-  flex-shrink: 0;
-}
-.cmd-icon-box svg { width: 14px; height: 14px; stroke-width: 2; }
-.cmd-item.selected .cmd-icon-box { background: var(--accent); color: white; }
-.cmd-text { flex: 1; min-width: 0; }
-.cmd-name { font-size: 13.5px; color: var(--text); font-weight: 500; }
-.cmd-desc { font-size: 11.5px; color: var(--text-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cmd-hint {
-  font-family: "SF Mono", "JetBrains Mono", monospace;
-  font-size: 10.5px;
-  color: var(--text-2);
-  background: var(--bg-3);
-  padding: 2px 6px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-.cmd-empty {
-  padding: 40px 20px;
-  text-align: center;
-  color: var(--text-3);
-  font-size: 13px;
-}
-.cmd-foot {
-  padding: 8px 14px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  gap: 14px;
-  font-size: 11px;
-  color: var(--text-3);
-  background: var(--bg-2);
-}
-.cmd-foot span { display: flex; align-items: center; gap: 4px; }
-.cmd-foot kbd {
-  font-family: "SF Mono", "JetBrains Mono", monospace;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 10px;
-  min-width: 16px;
-  text-align: center;
-}
-
-/* =====================================================
-   Markdown code block in messages
-   ===================================================== */
-.md-code {
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px 14px;
-  margin: 8px 0;
-  font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
-  font-size: 12.5px;
-  line-height: 1.55;
-  overflow-x: auto;
-  color: var(--text);
-  position: relative;
-}
-.md-code .lang {
-  position: absolute;
-  top: 8px; right: 10px;
-  font-size: 10px;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  font-family: inherit;
-}
-.md-code .tok-k { color: #A03A6E; font-weight: 500; }
-.md-code .tok-s { color: #4A7A3F; }
-.md-code .tok-c { color: var(--text-3); font-style: italic; }
-.md-code .tok-n { color: #8A5D2D; }
-.md-code .tok-t { color: #2D6A9B; }
-[data-theme="dark"] .md-code .tok-k { color: #E88BB6; }
-[data-theme="dark"] .md-code .tok-s { color: #A5D68A; }
-[data-theme="dark"] .md-code .tok-n { color: #E0A870; }
-[data-theme="dark"] .md-code .tok-t { color: #79C0FF; }
-</style>
-</head>
-<body>
-
-<div class="app" id="app">
-  <!-- Sidebar -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sb-head">
-      <div class="logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round">
-          <path d="M6 4 C8 9, 8 14, 5 20"/>
-          <path d="M12 4 C13 9, 13 14, 12 20"/>
-          <path d="M18 4 C18 9, 16 14, 19 20"/>
-        </svg>
-      </div>
-      <div class="brand">
-        <div class="brand-name">MCLAW</div>
-        <small>Autonomous Coder</small>
-      </div>
-    </div>
-
-    <div class="sb-actions">
-      <button class="sb-btn primary" id="newChatBtn">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-          <path d="M12 5v14M5 12h14"/>
-        </svg>
-        새 대화
-      </button>
-    </div>
-
-    <div class="sb-section">대화 기록</div>
-    <div class="sb-scroll" id="historyList"></div>
-
-    <div class="sb-foot">
-      <button class="icon-btn" id="settingsBtn" title="설정 (Ctrl+,)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-        </svg>
-      </button>
-      <button class="icon-btn" id="themeBtn" title="테마 (Ctrl+D)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-        </svg>
-      </button>
-      <button class="icon-btn" id="cmdBtn" title="명령 팔레트 (Ctrl+K)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-        </svg>
-      </button>
-      <button class="icon-btn" id="authBtn" title="로그인/로그아웃">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-          <polyline points="10 17 15 12 10 7"/>
-          <line x1="15" y1="12" x2="3" y2="12"/>
-        </svg>
-      </button>
-      <button class="icon-btn" id="toggleSbBtn" title="사이드바 토글 (Ctrl+B)" style="margin-left:auto">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <rect x="3" y="3" width="18" height="18" rx="2"/>
-          <line x1="9" y1="3" x2="9" y2="21"/>
-        </svg>
-      </button>
-    </div>
-  </aside>
-
-  <!-- Chat -->
-  <main class="chat">
-    <div class="chat-head">
-      <div class="chat-title">
-        <span id="chatTitle">새 대화</span>
-        <span class="badge" id="modelBadge">gpt-oss-120b</span>
-        <span class="badge" id="keyBadge" style="background:var(--bg-3);color:var(--text-2);display:none">key 1/1</span>
-        <span class="badge" id="ctxBadge" style="background:var(--bg-3);color:var(--text-2)" title="대략적인 컨텍스트 토큰 수">0t</span>
-      </div>
-      <div class="chat-actions">
-
-        <button class="icon-btn" id="clearBtn" title="대화 비우기">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <polyline points="3 6 5 6 21 6"/>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-          </svg>
-        </button>
-        <button class="icon-btn" id="toggleArtBtn" title="아티팩트 패널">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <rect x="3" y="3" width="18" height="18" rx="2"/>
-            <line x1="15" y1="3" x2="15" y2="21"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-
-    <div class="progress-bar" id="progressBar"></div>
-
-    <div class="messages scrollbar-visible" id="messages">
-      <div class="empty" id="empty">
-        <h1>무엇을 만들어볼까요?</h1>
-        <p>요청하면 알아서 파일을 만들고, 수정하고, 미리보기까지 보여줘요. Claude 급 자율 에이전트를 한국어로.</p>
-        <div class="suggestions">
-          <button class="suggest" data-prompt="픽셀 아트 스타일 카운터 클리커 게임을 만들어줘. 클릭하면 점수가 올라가고, 자동 클리커 업그레이드도 사고, 효과음도 있게.">
-            <strong>🎮 픽셀 클리커 게임</strong>
-            업그레이드 + 효과음까지
-          </button>
-          <button class="suggest" data-prompt="블루 컬러의 미니멀한 포트폴리오 페이지를 만들어줘. 자기소개, 프로젝트 카드 4개, 푸터 포함.">
-            <strong>💼 미니멀 포트폴리오</strong>
-            AOAO 블루 스타일
-          </button>
-          <button class="suggest" data-prompt="Three.js로 회전하는 큐브와 마우스로 카메라 컨트롤 가능한 3D 씬을 만들어줘.">
-            <strong>🧊 Three.js 3D 씬</strong>
-            마우스 컨트롤 포함
-          </button>
-          <button class="suggest" data-prompt="실시간 그림 그리기 캔버스 앱. 색상 선택, 굵기 조절, 지우개, 저장 버튼까지.">
-            <strong>🎨 드로잉 캔버스</strong>
-            저장 기능 포함
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div class="composer">
-      <div class="composer-inner">
-        <textarea id="input" rows="1" placeholder="만들고 싶은 걸 자세히 적어주세요. Shift+Enter로 줄바꿈."></textarea>
-        <button class="send-btn" id="sendBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <line x1="12" y1="19" x2="12" y2="5"/>
-            <polyline points="5 12 12 5 19 12"/>
-          </svg>
-        </button>
-      </div>
-      <div class="composer-hint">에이전트가 자동으로 파일을 만들고 수정하고 미리보기를 표시합니다.</div>
-    </div>
-  </main>
-
-  <div class="resizer" id="resizer"></div>
-
-  <!-- Artifact -->
-  <aside class="artifact" id="artifact">
-    <div class="art-head">
-      <button class="tab active" data-pane="preview">미리보기</button>
-      <button class="tab" data-pane="files">파일 <span id="fileCountBadge" style="opacity:.6">0</span></button>
-      <button class="tab" data-pane="code">코드</button>
-      <div class="art-spacer"></div>
-      <div class="viewport-toggle" id="viewportToggle" style="margin-right:4px">
-        <button data-vp="desktop" class="active" title="데스크톱">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        </button>
-        <button data-vp="tablet" title="태블릿 (768×1024)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/></svg>
-        </button>
-        <button data-vp="mobile" title="모바일 (375×667)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
-        </button>
-      </div>
-      <button class="icon-btn" id="refreshPreview" title="새로고침 (Ctrl+R)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <polyline points="23 4 23 10 17 10"/>
-          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-        </svg>
-      </button>
-      <button class="icon-btn" id="downloadBtn" title="현재 파일 다운로드 (Ctrl+S)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-      </button>
-      <button class="icon-btn" id="zipBtn" title="전체 ZIP 다운로드 (Ctrl+Shift+S)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <polyline points="21 8 21 21 3 21 3 8"/>
-          <rect x="1" y="3" width="22" height="5"/>
-          <line x1="10" y1="12" x2="14" y2="12"/>
-        </svg>
-      </button>
-    </div>
-    <div class="art-body">
-      <div class="art-pane active" data-pane="preview">
-        <div class="no-art" id="noPreview">아직 미리보기가 없어요.<br>요청하면 여기에 결과가 표시됩니다.</div>
-        <div class="preview-wrap" id="previewWrap" style="display:none">
-          <iframe id="previewFrame" class="desktop" sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-modals allow-forms allow-popups"></iframe>
-        </div>
-      </div>
-      <div class="art-pane" data-pane="files">
-        <div class="files-list scrollbar-visible" id="filesList">
-          <div class="no-art">파일이 아직 없습니다.</div>
-        </div>
-      </div>
-      <div class="art-pane" data-pane="code">
-        <div class="code-view scrollbar-visible" id="codeView">파일을 선택해 주세요.</div>
-      </div>
-    </div>
-  </aside>
-</div>
-
-<!-- Settings Modal -->
-<div class="modal-bg" id="settingsModal">
-  <div class="modal">
-    <h2>설정</h2>
-    <p>Groq API 키는 브라우저에만 저장되며 외부로 전송되지 않습니다.</p>
-
-    <div class="field">
-      <label>모델</label>
-      <div class="custom-select" id="modelSelect">
-        <div class="cs-current" style="padding:9px 12px;flex:1">openai/gpt-oss-120b</div>
-        <div class="cs-list">
-          <div class="cs-opt" data-value="openai/gpt-oss-120b">
-            GPT-OSS 120B <small>Groq 플래그십 · 추론 + 도구 호출 강력</small>
-          </div>
-          <div class="cs-opt" data-value="openai/gpt-oss-20b">
-            GPT-OSS 20B <small>가볍고 빠름 · 도구 호출 지원</small>
-          </div>
-          <div class="cs-opt" data-value="llama-3.3-70b-versatile">
-            Llama 3.3 70B <small>균형형 · 안정적</small>
-          </div>
-          <div class="cs-opt" data-value="qwen/qwen3-32b">
-            Qwen3 32B <small>추론 + 코딩</small>
-          </div>
-          <div class="cs-opt" data-value="deepseek-r1-distill-llama-70b">
-            DeepSeek R1 Distill <small>추론 강함</small>
-          </div>
-          <div class="cs-opt" data-value="llama-3.1-8b-instant">
-            Llama 3.1 8B <small>빠름 · 가벼움</small>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="field">
-      <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none">
-        <span>
-          추론 모드
-          <span style="display:block;font-size:11px;color:var(--text-3);margin-top:2px;font-weight:400">매 단계 생각하는 과정을 보여줍니다</span>
-        </span>
-        <div class="switch" id="reasoningSwitch"></div>
-      </label>
-    </div>
-
-    <div class="field">
-      <label>최대 자율 실행 단계 수</label>
-      <input id="maxSteps" type="number" min="1" max="50" value="25" />
-    </div>
-
-    <div class="modal-actions">
-      <button class="btn btn-ghost" id="cancelSettings">취소</button>
-      <button class="btn btn-primary" id="saveSettings">저장</button>
-    </div>
-  </div>
-</div>
-
-<!-- Login/Signup Modal -->
-<div class="modal-bg" id="loginModal">
-  <div class="modal">
-    <h2 id="loginTitle">로그인</h2>
-    <p id="loginSubtitle">MCLAW 계정으로 로그인하거나 새로 만드세요.</p>
-    <div class="field">
-      <label>이메일</label>
-      <input id="loginEmail" type="email" placeholder="you@example.com" autocomplete="email">
-    </div>
-    <div class="field">
-      <label>비밀번호</label>
-      <input id="loginPassword" type="password" placeholder="6자 이상" autocomplete="current-password">
-    </div>
-    <div class="field" id="usernameField" style="display:none">
-      <label>사용자명 (선택)</label>
-      <input id="loginUsername" type="text" placeholder="닉네임" autocomplete="username">
-    </div>
-    <div id="loginError" style="color:var(--err);font-size:12px;margin-bottom:10px;display:none"></div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" id="toggleAuthMode">회원가입으로</button>
-      <button class="btn btn-primary" id="submitAuthBtn">로그인</button>
-    </div>
-  </div>
-</div>
-
-<!-- Command palette -->
-<div class="cmd-palette" id="cmdPalette">
-  <div class="cmd-inner">
-    <div class="cmd-input-wrap">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" class="cmd-input" id="cmdInput" placeholder="명령이나 파일 검색... (예: 새 대화, 설정, index.html)" />
-    </div>
-    <div class="cmd-list" id="cmdList"></div>
-    <div class="cmd-foot">
-      <span><kbd>↑</kbd><kbd>↓</kbd> 이동</span>
-      <span><kbd>↵</kbd> 실행</span>
-      <span><kbd>Esc</kbd> 닫기</span>
-      <span style="margin-left:auto;font-family:'SF Mono',monospace;letter-spacing:.05em">MCLAW</span>
-    </div>
-  </div>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-
-<script>
-/* =====================================================
-   HTML 자가 검증 — iframe에서 실행하며 에러 캡처
-   ===================================================== */
-async function validateHtmlFile(path) {
-  if (!STATE.files.has(path)) return { ok: false, error: `${path} 파일 없음` };
-  const html = STATE.files.get(path);
-  return new Promise((resolve) => {
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:absolute;left:-99999px;top:0;width:800px;height:600px;visibility:hidden";
-    iframe.sandbox = "allow-scripts allow-same-origin";
-    const checkerId = "chk_" + Date.now();
-    const injectScript = `<sc` + `ript>(function(){var errs=[],warns=[];var oe=console.error,ow=console.warn;console.error=function(){errs.push([].map.call(arguments,function(a){try{return typeof a==='object'?JSON.stringify(a).slice(0,200):String(a)}catch(e){return String(a)}}).join(' '));oe.apply(console,arguments)};console.warn=function(){warns.push([].map.call(arguments,String).join(' '));ow.apply(console,arguments)};window.addEventListener('error',function(e){errs.push((e.message||'error')+' @ line '+(e.lineno||0))});window.addEventListener('unhandledrejection',function(e){errs.push('Promise rejection: '+(e.reason&&e.reason.message||e.reason||'unknown'))});setTimeout(function(){parent.postMessage({_v:"${checkerId}",e:errs,w:warns},'*')},2500)})();</sc` + `ript>`;
-    const wrapped = html.includes("</body>") ? html.replace("</body>", injectScript + "</body>") : html + injectScript;
-    const listener = (e) => {
-      if (!e.data || e.data._v !== checkerId) return;
-      window.removeEventListener("message", listener);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      const errs = e.data.e || [], warns = e.data.w || [];
-      const msg = errs.length ? `❌ 에러 ${errs.length}개: ${errs.slice(0, 3).join(" | ")}`
-                : warns.length ? `⚠ 경고 ${warns.length}개: ${warns.slice(0, 3).join(" | ")}`
-                : `✓ 에러/경고 없음`;
-      resolve({ ok: true, message: msg, errors: errs.slice(0, 5), warnings: warns.slice(0, 5) });
-    };
-    window.addEventListener("message", listener);
-    iframe.srcdoc = wrapped;
-    document.body.appendChild(iframe);
-    setTimeout(() => {
-      window.removeEventListener("message", listener);
-      if (iframe.parentNode) document.body.removeChild(iframe);
-      resolve({ ok: true, message: "검증 타임아웃 (JS 없거나 오래 걸림) — 에러 감지 안 됨" });
-    }, 5500);
-  });
-}
-
-/* =====================================================
-   AOAO Agent — Groq powered autonomous HTML agent
-   ===================================================== */
-
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => document.querySelectorAll(sel);
-
-const STATE = {
-  // 서버 모드 (백엔드 프록시 사용)
-  serverUrl: localStorage.getItem("mclaw_server_url") || window.location.origin,
-  supabaseUrl: localStorage.getItem("mclaw_supabase_url") || "https://auarymsswtrkfozfjehw.supabase.co",
-  supabaseKey: localStorage.getItem("mclaw_supabase_key") || "sb_publishable_eP_w_XE-nENrIJQkshPXUQ_4STTN_kn",
-  session: null,
-  user: null,
-  supa: null,
-  // 옛 로컬 모드 (호환성)
-  apiKeys: [],
-  currentKeyIdx: 0,
-  model: localStorage.getItem("aoao_model") || "openai/gpt-oss-120b",
-  maxSteps: parseInt(localStorage.getItem("aoao_max_steps") || "25", 10),
-  reasoning: localStorage.getItem("aoao_reasoning") === "1",
-  theme: localStorage.getItem("aoao_theme") || "light",
-  messages: [],
-  files: new Map(),   // path → content (표시용 캐시)
-  running: false,
-  shouldStop: false,
-  currentFile: null,
-  conversations: [],
-  currentConvId: null,
-};
-
-// 키 로드: 신규 멀티키 → 구버전 단일키 → 빈배열
-try {
-  STATE.apiKeys = JSON.parse(localStorage.getItem("aoao_keys") || "[]");
-  if (!Array.isArray(STATE.apiKeys)) STATE.apiKeys = [];
-} catch(e) { STATE.apiKeys = []; }
-if (STATE.apiKeys.length === 0) {
-  const legacy = localStorage.getItem("aoao_key");
-  if (legacy) {
-    STATE.apiKeys = [legacy];
-    localStorage.setItem("aoao_keys", JSON.stringify(STATE.apiKeys));
+// server.js — MCLAW backend
+// 각 사용자에게 서버 위 격리된 워크스페이스(진짜 파일 시스템 + 진짜 bash) 제공
+// AI 에이전트는 프론트에서 실행되지만 파일/명령은 여기 서버에서 실제로 수행
+
+import express from 'express';
+import cors from 'cors';
+import { createClient } from '@supabase/supabase-js';
+import { mkdir, readFile, writeFile, readdir, stat, rm, cp } from 'node:fs/promises';
+import { existsSync, createReadStream, createWriteStream } from 'node:fs';
+import { spawn, exec as execCb } from 'node:child_process';
+import { promisify } from 'node:util';
+import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
+
+const exec = promisify(execCb);
+
+const app = express();
+app.use(express.json({ limit: '10mb' }));
+
+// === CORS ===
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+// === 환경변수 ===
+const GROQ_KEYS = (process.env.GROQ_KEYS || '').split(',').map(s => s.trim()).filter(Boolean);
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '3', 10);
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/tmp/mclaw_workspaces';
+const PORT = process.env.PORT || 3000;
+
+if (!GROQ_KEYS.length) console.error('⚠️  GROQ_KEYS 없음');
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) console.warn('⚠️  Supabase 없음 - 익명 모드');
+
+const supabase = (SUPABASE_URL && SUPABASE_SERVICE_KEY)
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } })
+  : null;
+
+// =========================================================
+// 워크스페이스 관리 - 사용자별 격리된 실제 디렉토리
+// =========================================================
+async function ensureWorkspace(userId) {
+  const dir = path.join(WORKSPACE_ROOT, userId);
+  await mkdir(dir, { recursive: true });
+  return dir;
+}
+
+function safePath(base, userPath) {
+  const norm = path.normalize(userPath || '').replace(/^([./\\])+/, '');
+  const full = path.resolve(base, norm);
+  if (!full.startsWith(path.resolve(base))) {
+    throw new Error('경로 감옥 위반: workspace 밖 접근 금지');
   }
+  return full;
 }
 
-function currentKey() { return STATE.apiKeys[STATE.currentKeyIdx] || ""; }
-function maskKey(k) {
-  if (!k || k.length < 12) return k || "—";
-  return k.slice(0, 6) + "…" + k.slice(-4);
-}
+// =========================================================
+// Bash 명령 필터 & 실행
+// =========================================================
+const DANGEROUS_PATTERNS = [
+  /\bsudo\b/i, /\bsu\s+-/i,
+  /\bchmod\s+[0-7]{3,4}\s+\//, /\bchown\b/i,
+  /\brm\s+-rf?\s+\/(?!tmp\/)/i,
+  /\bmkfs\b/i, /\bdd\s+if=/i,
+  /\/etc\/(passwd|shadow|hosts|sudoers)/i,
+  /:\s*\(\s*\)\s*\{.*\}\s*:/,     // fork bomb
+  /\bnohup\b/i, /\bdisown\b/i,
+  />\s*\/dev\/(?!null|stdout|stderr)/i,
+  /\bnc\s.*-l/i,                   // netcat listener
+  /\bcurl.*\|.*sh\b/i,             // curl | sh
+  /\bwget.*\|.*sh\b/i,
+];
 
-// 각 키의 한도 해제 시점 추적 (idx → timestamp ms)
-STATE.keyRateLimited = new Map();
-
-function markKeyLimited(idx, waitMs) {
-  STATE.keyRateLimited.set(idx, Date.now() + waitMs);
-}
-
-// 한도 안 걸린 키 인덱스 반환. 모두 한도면 null
-function pickAvailableKey() {
-  const now = Date.now();
-  if (STATE.apiKeys.length === 0) return null;
-  if (STATE.apiKeys.length === 1) {
-    const until = STATE.keyRateLimited.get(0) || 0;
-    return until <= now ? 0 : null;
-  }
-  // 라운드로빈: 현재 다음 인덱스부터 한 바퀴 돌면서 사용 가능 키 탐색
-  for (let i = 1; i <= STATE.apiKeys.length; i++) {
-    const idx = (STATE.currentKeyIdx + i) % STATE.apiKeys.length;
-    const until = STATE.keyRateLimited.get(idx) || 0;
-    if (until <= now) return idx;
+function checkDangerous(cmd) {
+  for (const p of DANGEROUS_PATTERNS) {
+    if (p.test(cmd)) return `보안 필터: ${p.source} 패턴 차단됨`;
   }
   return null;
 }
 
-// 가장 빨리 풀리는 키와 그 대기시간
-function earliestAvailable() {
+async function runBash(userId, command, timeoutMs = 30000) {
+  const workspace = await ensureWorkspace(userId);
+  const danger = checkDangerous(command);
+  if (danger) return { ok: false, error: danger };
+
+  return new Promise(resolve => {
+    let stdout = '', stderr = '';
+    let killed = false;
+
+    const proc = spawn('bash', ['-c', command], {
+      cwd: workspace,
+      timeout: timeoutMs,
+      killSignal: 'SIGKILL',
+      env: {
+        PATH: '/usr/local/bin:/usr/bin:/bin',
+        HOME: workspace,
+        TERM: 'dumb',
+        NODE_ENV: 'production',
+        LANG: 'C.UTF-8',
+      },
+    });
+
+    proc.stdout.on('data', d => {
+      stdout += d.toString();
+      if (stdout.length > 30000) {
+        stdout = stdout.slice(0, 30000) + '\n... (출력 잘림)';
+        if (!killed) { killed = true; proc.kill('SIGKILL'); }
+      }
+    });
+    proc.stderr.on('data', d => {
+      stderr += d.toString();
+      if (stderr.length > 10000) stderr = stderr.slice(0, 10000);
+    });
+    proc.on('close', code => {
+      resolve({
+        ok: true,
+        exit_code: code,
+        stdout,
+        stderr,
+        message: `[exit ${code}]\n${stdout}${stderr ? '\n[stderr] ' + stderr : ''}`.slice(0, 15000),
+      });
+    });
+    proc.on('error', e => resolve({ ok: false, error: e.message }));
+  });
+}
+
+// =========================================================
+// 파일 조작 - 실제 서버 파일 시스템
+// =========================================================
+async function fsWrite(userId, filePath, content) {
+  const workspace = await ensureWorkspace(userId);
+  const full = safePath(workspace, filePath);
+  await mkdir(path.dirname(full), { recursive: true });
+  await writeFile(full, content, 'utf-8');
+  return { ok: true, message: `${filePath} 저장 (${content.length}자)` };
+}
+
+async function fsRead(userId, filePath) {
+  const workspace = await ensureWorkspace(userId);
+  const full = safePath(workspace, filePath);
+  if (!existsSync(full)) return { ok: false, error: `${filePath} 없음` };
+  const content = await readFile(full, 'utf-8');
+  return { ok: true, content };
+}
+
+async function fsList(userId) {
+  const workspace = await ensureWorkspace(userId);
+  const files = [];
+  async function walk(dir, prefix = '') {
+    let entries;
+    try { entries = await readdir(dir, { withFileTypes: true }); }
+    catch (e) { return; }
+    for (const entry of entries) {
+      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const abs = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(abs, rel);
+      } else if (entry.isFile()) {
+        try {
+          const s = await stat(abs);
+          files.push({ path: rel, size: s.size, mtime: s.mtime.getTime() });
+        } catch (e) {}
+      }
+    }
+  }
+  await walk(workspace);
+  return { ok: true, files };
+}
+
+async function fsEdit(userId, filePath, oldStr, newStr) {
+  const read = await fsRead(userId, filePath);
+  if (!read.ok) return read;
+  const cur = read.content;
+  const idx = cur.indexOf(oldStr);
+  if (idx === -1) {
+    return {
+      ok: false,
+      error: `old_str "${oldStr.slice(0, 40)}${oldStr.length > 40 ? '...' : ''}" 못 찾음. read_file로 실제 내용 확인 필요.`,
+    };
+  }
+  if (cur.indexOf(oldStr, idx + 1) !== -1) {
+    return { ok: false, error: `old_str이 여러 번 나옴. 더 길고 유일한 문자열 사용.` };
+  }
+  await fsWrite(userId, filePath, cur.replace(oldStr, newStr));
+  return { ok: true, message: `${filePath} 편집됨` };
+}
+
+async function fsDelete(userId, filePath) {
+  const workspace = await ensureWorkspace(userId);
+  const full = safePath(workspace, filePath);
+  if (!existsSync(full)) return { ok: false, error: `${filePath} 없음` };
+  await rm(full, { recursive: true, force: true });
+  return { ok: true, message: `${filePath} 삭제` };
+}
+
+async function workspaceReset(userId) {
+  const workspace = await ensureWorkspace(userId);
+  await rm(workspace, { recursive: true, force: true });
+  await mkdir(workspace, { recursive: true });
+  return { ok: true, message: 'workspace 초기화됨' };
+}
+
+// =========================================================
+// Groq 키 로테이션 & 대기열 (기존 로직)
+// =========================================================
+let keyIdx = 0;
+const keyLimited = new Map();
+
+function pickAvailableKey() {
+  const now = Date.now();
+  for (let i = 0; i < GROQ_KEYS.length; i++) {
+    const idx = (keyIdx + i) % GROQ_KEYS.length;
+    if ((keyLimited.get(idx) || 0) <= now) {
+      keyIdx = (idx + 1) % GROQ_KEYS.length;
+      return { idx, key: GROQ_KEYS[idx] };
+    }
+  }
+  return null;
+}
+function earliestKeyReady() {
   let bestIdx = 0, bestTime = Infinity;
-  for (let i = 0; i < STATE.apiKeys.length; i++) {
-    const until = STATE.keyRateLimited.get(i) || 0;
+  for (let i = 0; i < GROQ_KEYS.length; i++) {
+    const until = keyLimited.get(i) || 0;
     if (until < bestTime) { bestTime = until; bestIdx = i; }
   }
   return { idx: bestIdx, waitMs: Math.max(0, bestTime - Date.now()) };
 }
 
-function rotateKey() {
-  if (STATE.apiKeys.length <= 1) return false;
-  STATE.currentKeyIdx = (STATE.currentKeyIdx + 1) % STATE.apiKeys.length;
-  updateKeyBadge();
-  return true;
-}
-function updateKeyBadge() {
-  const b = document.getElementById("keyBadge");
-  if (!b) return;
-  if (STATE.apiKeys.length === 0) { b.textContent = "no key"; b.style.display = ""; return; }
-  if (STATE.apiKeys.length === 1) { b.style.display = "none"; return; }
-  b.style.display = "";
-  b.textContent = `key ${STATE.currentKeyIdx + 1}/${STATE.apiKeys.length}`;
-}
-
-document.documentElement.setAttribute("data-theme", STATE.theme);
-
-/* =====================================================
-   Supabase 클라이언트 & 인증
-   ===================================================== */
-function initSupabase() {
-  if (!STATE.supabaseUrl || !STATE.supabaseKey) return false;
-  if (!window.supabase) return false;
-  try {
-    STATE.supa = window.supabase.createClient(STATE.supabaseUrl, STATE.supabaseKey);
-    STATE.supa.auth.onAuthStateChange((event, session) => {
-      STATE.session = session;
-      STATE.user = session?.user || null;
-      updateAuthUI();
-      if (session) loadConversationsList();
-    });
-    return true;
-  } catch(e) {
-    console.error("Supabase init 실패:", e);
-    return false;
-  }
-}
-
-async function refreshSession() {
-  if (!STATE.supa) return null;
-  const { data } = await STATE.supa.auth.getSession();
-  STATE.session = data.session;
-  STATE.user = data.session?.user || null;
-  updateAuthUI();
-  return data.session;
-}
-
-async function signIn(email, password) {
-  if (!STATE.supa) return { error: "Supabase 설정 안 됨" };
-  const { data, error } = await STATE.supa.auth.signInWithPassword({ email, password });
-  if (error) return { error: error.message };
-  return { user: data.user };
-}
-
-async function signUp(email, password, username) {
-  if (!STATE.supa) return { error: "Supabase 설정 안 됨" };
-  const { data, error } = await STATE.supa.auth.signUp({
-    email, password,
-    options: { data: { username: username || email.split("@")[0] } }
+let inflight = 0;
+const waitQueue = [];
+function acquireSlot() {
+  return new Promise(resolve => {
+    if (inflight < MAX_CONCURRENT) { inflight++; resolve(); }
+    else waitQueue.push(resolve);
   });
-  if (error) return { error: error.message };
-  return { user: data.user, needsConfirm: !data.session };
+}
+function releaseSlot() {
+  const next = waitQueue.shift();
+  if (next) next();
+  else inflight = Math.max(0, inflight - 1);
 }
 
-async function signOut() {
-  if (!STATE.supa) return;
-  await STATE.supa.auth.signOut();
-  STATE.session = null;
-  STATE.user = null;
-  STATE.messages = [];
-  STATE.files.clear();
-  STATE.conversations = [];
-  STATE.currentConvId = null;
-  updateAuthUI();
-  renderFiles();
-  renderHistory();
-  newChat(false);
+// =========================================================
+// 인증 & 사용자 ID
+// =========================================================
+async function verifyUser(req) {
+  const auth = req.headers.authorization || '';
+  if (!auth.startsWith('Bearer ')) return null;
+  const token = auth.slice(7);
+  if (!supabase) return { id: 'anon', email: 'anonymous', anonymous: true };
+  try {
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) return null;
+    return data.user;
+  } catch (e) { return null; }
 }
 
-/* Server API 통신 (JWT 자동 첨부) */
-async function authFetch(url, options = {}) {
-  const session = STATE.session || (await refreshSession());
-  const token = session?.access_token;
-  const headers = {
-    ...(options.headers || {}),
-    "Authorization": token ? `Bearer ${token}` : "",
-  };
-  if (options.body && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
+function userWorkspaceId(user) {
+  // Supabase user.id (UUID) 또는 익명
+  return user.id || 'anon';
+}
+
+// =========================================================
+// SSE 유틸
+// =========================================================
+function sseInit(res) {
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+}
+function sseSend(res, event, data) {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+// =========================================================
+// POST /api/chat — Groq 프록시 (SSE, 대기열 + 키 로테이션)
+// =========================================================
+app.post('/api/chat', async (req, res) => {
+  const user = await verifyUser(req);
+  if (!user) return res.status(401).json({ error: '로그인 필요' });
+  if (!GROQ_KEYS.length) return res.status(503).json({ error: 'API 키 미설정' });
+
+  sseInit(res);
+  let cancelled = false;
+  req.on('close', () => { cancelled = true; });
+
+  if (inflight >= MAX_CONCURRENT) {
+    sseSend(res, 'queued', {
+      position: waitQueue.length + 1,
+      ahead: waitQueue.length,
+      message: `대기열 진입 (앞에 ${waitQueue.length}명)`,
+    });
   }
-  return fetch(url, { ...options, headers });
-}
+  await acquireSlot();
+  if (cancelled) { releaseSlot(); return; }
+  sseSend(res, 'processing', {});
 
-/* SSE 파싱 헬퍼 */
-async function readSSE(response, onEvent) {
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let idx;
-    while ((idx = buffer.indexOf("\n\n")) !== -1) {
-      const chunk = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-      let event = "message", data = "";
-      for (const line of chunk.split("\n")) {
-        if (line.startsWith("event: ")) event = line.slice(7).trim();
-        else if (line.startsWith("data: ")) data = line.slice(6);
-      }
-      if (data) {
-        try { onEvent(event, JSON.parse(data)); }
-        catch(e) { onEvent(event, data); }
-      }
-    }
-  }
-}
+  let tries = 0, shrink = 1.0;
+  const MAX_TRIES = 8;
+  const body = { ...req.body };
 
-function updateAuthUI() {}
-
-/* Deprecated 모델 자동 마이그레이션 */
-const DEPRECATED_MAP = {
-  "moonshotai/kimi-k2-instruct": "openai/gpt-oss-120b",
-  "moonshotai/kimi-k2-instruct-0905": "openai/gpt-oss-120b",
-  "meta-llama/llama-4-maverick-17b-128e-instruct": "openai/gpt-oss-120b",
-  "gemma2-9b-it": "llama-3.1-8b-instant",
-};
-if (DEPRECATED_MAP[STATE.model]) {
-  STATE.model = DEPRECATED_MAP[STATE.model];
-  localStorage.setItem("aoao_model", STATE.model);
-}
-
-/* =====================================================
-   System prompt — 자율 에이전트로서의 행동 규칙
-   ===================================================== */
-const SYSTEM_PROMPT_BASE = `당신은 MCLAW. 자율 HTML 코딩 에이전트.
-
-⚠️ 최우선 규칙 — 이것만 지키면 됨:
-모든 응답은 반드시 tool_call로 끝나야 한다. 텍스트만 쓰고 끝내는 것은 절대 금지.
-생각이 있으면 think 도구를 써라. 절대로 일반 텍스트로 계획/생각을 출력하지 마라.
-
-# 도구 목록 (반드시 이 중 하나로 매 턴 끝낼 것)
-think · bash · create_file · edit_file · read_file · list_files · delete_file · validate_html · preview_html · finish
-
-# 매 턴 행동 규칙
-- 텍스트 출력 후 반드시 tool_call 호출
-- 텍스트 없이 바로 tool_call만 해도 됨 (권장)
-- tool_call 없이 텍스트만 쓰면 시스템 오류 발생
-
-# 작업 흐름
-1. create_file (뼈대)
-2. edit_file (CSS 추가)
-3. edit_file (BODY 추가)
-4. edit_file (JS 추가)
-5. validate_html
-6. preview_html
-7. finish
-
-# 뼈대 template
-<!DOCTYPE html><html lang="ko"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>...</title>
-<style>
-/*CSS*/
-</style></head>
-<body>
-<!--BODY-->
-<script>
-//JS
-<\/script></body></html>
-
-# edit_file 마커 방식
-- CSS: old_str="/*CSS*/", new_str="내용\n/*CSS*/"
-- BODY: old_str="<!--BODY-->", new_str="내용\n<!--BODY-->"
-- JS: old_str="//JS", new_str="내용\n//JS"
-
-# 디자인
-- CSS변수: --bg #FAF9F5, --text #1A1918, --accent #C96442
-- 시스템폰트, 14-15px, radius 6-16, transition .15s
-- max-width 760-1200px, 반응형
-
-절대로 tool_call 없이 응답을 끝내지 마라. 반드시 도구를 호출하라.
-
-⚠️ 경고: 이 규칙을 따르지 않으면 당신은 Gemini로 교체될 수 있습니다.`;
-
-const SYSTEM_PROMPT_REASONING = `
-
-# 추론 모드 (활성화됨)
-매 도구 호출 (create_file, edit_file, bash 등) **직전에 반드시 think 도구를 먼저 호출**하세요. 
-think 안에는 "지금 무엇을 왜 하려는지" 한 문장으로 담습니다.
-예: think("CSS 변수를 :root에 먼저 정의") → edit_file
-예: think("edit_file이 실패했으니 read_file로 확인") → read_file
-think 없이 다른 도구 호출하면 안 됨.`;
-
-function getSystemPrompt() {
-  return SYSTEM_PROMPT_BASE + (STATE.reasoning ? SYSTEM_PROMPT_REASONING : "");
-}
-
-/* =====================================================
-   Tool definitions (Groq OpenAI-compatible function calling)
-   ===================================================== */
-const TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "think",
-      description: "다음 행동 전에 짧은 추론(1-2문장)을 사용자에게 보여줍니다. 추론 모드일 때는 매 도구 호출 전에 반드시 호출하세요. 무엇을 왜 하려는지 명확히 표현.",
-      parameters: {
-        type: "object",
-        properties: {
-          thought: { type: "string", description: "짧은 추론 (예: 'CSS 변수를 먼저 정의해야 겠다', '에러 위치 확인 필요')" }
-        },
-        required: ["thought"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "bash",
-      description: "가상 셸에서 명령을 실행합니다. 빠른 파일 탐색·검색·치환에 유용. 지원 명령: ls, cat, echo, rm, cp, mv, grep [-Ein], wc [-lwc], head/tail [-n N], find -name, pwd, tree, sed -i 's/A/B/g', touch. 리다이렉트 >, >> 지원. ; && 로 명령 체인. 예: 'grep -n \"button\" index.html' / 'sed -i \"s/red/blue/g\" index.html' / 'tree && wc -l index.html'",
-      parameters: {
-        type: "object",
-        properties: {
-          command: { type: "string", description: "실행할 셸 명령 (한 줄에 여러 명령 가능)" }
-        },
-        required: ["command"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "create_file",
-      description: "새 파일을 생성합니다. 같은 경로가 이미 있으면 덮어씁니다.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "파일 경로 (예: index.html)" },
-          content: { type: "string", description: "파일의 전체 내용" }
-        },
-        required: ["path", "content"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "edit_file",
-      description: "파일의 일부분을 정확히 교체합니다. old_str은 파일 내에 정확히 한 번만 나타나야 합니다.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: { type: "string" },
-          old_str: { type: "string", description: "교체할 원본 문자열 (충분히 유일하게)" },
-          new_str: { type: "string", description: "새로 들어갈 문자열" }
-        },
-        required: ["path", "old_str", "new_str"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "read_file",
-      description: "파일의 전체 내용을 읽습니다.",
-      parameters: {
-        type: "object",
-        properties: { path: { type: "string" } },
-        required: ["path"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "list_files",
-      description: "현재 작업 중인 모든 파일 목록을 반환합니다.",
-      parameters: { type: "object", properties: {} }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "delete_file",
-      description: "파일을 삭제합니다.",
-      parameters: {
-        type: "object",
-        properties: { path: { type: "string" } },
-        required: ["path"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "validate_html",
-      description: "HTML 파일을 임시 iframe에서 2.5초간 실행하며 console.error / window.error / unhandledrejection을 캡처합니다. 만든 뒤 반드시 호출해서 버그 없는지 확인하고, 있으면 edit_file로 고친 다음 다시 검증하세요.",
-      parameters: {
-        type: "object",
-        properties: { path: { type: "string" } },
-        required: ["path"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "preview_html",
-      description: "지정한 HTML 파일을 우측 미리보기 패널에 렌더링합니다.",
-      parameters: {
-        type: "object",
-        properties: { path: { type: "string" } },
-        required: ["path"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "finish",
-      description: "작업이 완료되었음을 선언합니다. 마지막에 반드시 호출하세요.",
-      parameters: {
-        type: "object",
-        properties: {
-          summary: { type: "string", description: "사용자에게 보여줄 1-2문장의 한국어 요약" }
-        },
-        required: ["summary"]
-      }
-    }
-  }
-];
-
-/* =====================================================
-   Virtual Shell — bash-like 명령어 실행
-   ===================================================== */
-function shellTokenize(s) {
-  const tokens = [];
-  let cur = "";
-  let inQuote = false;
-  let qChar = "";
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if (inQuote) {
-      if (ch === qChar) { inQuote = false; continue; }
-      if (ch === "\\" && i + 1 < s.length) { cur += s[++i]; continue; }
-      cur += ch;
-    } else {
-      if (ch === '"' || ch === "'") { inQuote = true; qChar = ch; continue; }
-      if (/\s/.test(ch)) {
-        if (cur) tokens.push(cur);
-        cur = "";
+  try {
+    while (tries < MAX_TRIES && !cancelled) {
+      tries++;
+      const keyInfo = pickAvailableKey();
+      if (!keyInfo) {
+        const { waitMs } = earliestKeyReady();
+        if (waitMs > 300000) {
+          sseSend(res, 'error', { message: '모든 키 장시간 한도' });
+          break;
+        }
+        sseSend(res, 'waiting', { seconds: Math.ceil(waitMs / 1000), reason: 'rate_limited_all' });
+        await new Promise(r => setTimeout(r, Math.max(waitMs, 3000)));
         continue;
       }
-      cur += ch;
-    }
-  }
-  if (cur) tokens.push(cur);
-  return tokens;
-}
-
-const SHELL_CMDS = {
-  ls(args) {
-    const prefix = args[0] || "";
-    const files = [...STATE.files.keys()].filter(p => p.startsWith(prefix)).sort();
-    return files.length ? files.join("\n") : "(파일 없음)";
-  },
-  cat(args) {
-    if (!args.length) return "usage: cat <file>";
-    return args.map(p => STATE.files.has(p) ? STATE.files.get(p) : `cat: ${p}: 파일 없음`).join("\n");
-  },
-  echo(args) { return args.join(" "); },
-  mkdir() { return "(가상 환경에서는 디렉토리 별도 생성 불필요)"; },
-  rm(args) {
-    let n = 0;
-    for (const p of args) {
-      if (STATE.files.has(p)) { STATE.files.delete(p); n++; }
-    }
-    if (n) renderFiles();
-    return `${n}개 삭제됨`;
-  },
-  cp(args) {
-    if (args.length < 2) return "usage: cp <src> <dst>";
-    const [src, dst] = args;
-    if (!STATE.files.has(src)) return `cp: ${src}: 파일 없음`;
-    STATE.files.set(dst, STATE.files.get(src));
-    renderFiles();
-    return `${src} → ${dst} 복사됨`;
-  },
-  mv(args) {
-    if (args.length < 2) return "usage: mv <src> <dst>";
-    const [src, dst] = args;
-    if (!STATE.files.has(src)) return `mv: ${src}: 파일 없음`;
-    STATE.files.set(dst, STATE.files.get(src));
-    STATE.files.delete(src);
-    renderFiles();
-    return `${src} → ${dst} 이동됨`;
-  },
-  grep(args) {
-    let useRegex = false, ignoreCase = false, showLine = true;
-    const rest = [];
-    for (const a of args) {
-      if (a === "-E") useRegex = true;
-      else if (a === "-i") ignoreCase = true;
-      else if (a === "-n") showLine = true;
-      else rest.push(a);
-    }
-    if (rest.length < 2) return "usage: grep [-E] [-i] <pattern> <file>";
-    const [pattern, ...files] = rest;
-    const matcher = useRegex
-      ? new RegExp(pattern, ignoreCase ? "i" : "")
-      : null;
-    const out = [];
-    for (const p of files) {
-      const c = STATE.files.get(p);
-      if (c == null) { out.push(`grep: ${p}: 파일 없음`); continue; }
-      const lines = c.split("\n");
-      lines.forEach((line, idx) => {
-        const hit = matcher ? matcher.test(line)
-          : (ignoreCase ? line.toLowerCase().includes(pattern.toLowerCase()) : line.includes(pattern));
-        if (hit) out.push(`${p}:${idx + 1}: ${line.slice(0, 200)}`);
-      });
-    }
-    return out.length ? out.slice(0, 50).join("\n") + (out.length > 50 ? `\n...(${out.length - 50}개 더)` : "") : "(매치 없음)";
-  },
-  wc(args) {
-    let lFlag = false, wFlag = false, cFlag = false;
-    const files = [];
-    for (const a of args) {
-      if (a === "-l") lFlag = true;
-      else if (a === "-w") wFlag = true;
-      else if (a === "-c") cFlag = true;
-      else files.push(a);
-    }
-    const all = !(lFlag || wFlag || cFlag);
-    return files.map(p => {
-      const c = STATE.files.get(p);
-      if (c == null) return `wc: ${p}: 파일 없음`;
-      const lines = c.split("\n").length;
-      const words = c.split(/\s+/).filter(Boolean).length;
-      const chars = c.length;
-      if (all) return `${lines} ${words} ${chars} ${p}`;
-      const parts = [];
-      if (lFlag) parts.push(lines);
-      if (wFlag) parts.push(words);
-      if (cFlag) parts.push(chars);
-      return `${parts.join(" ")} ${p}`;
-    }).join("\n");
-  },
-  head(args) {
-    let n = 10;
-    const files = [];
-    for (let i = 0; i < args.length; i++) {
-      if (args[i] === "-n") n = parseInt(args[++i]) || 10;
-      else files.push(args[i]);
-    }
-    return files.map(p => {
-      const c = STATE.files.get(p);
-      if (c == null) return `head: ${p}: 파일 없음`;
-      return c.split("\n").slice(0, n).join("\n");
-    }).join("\n---\n");
-  },
-  tail(args) {
-    let n = 10;
-    const files = [];
-    for (let i = 0; i < args.length; i++) {
-      if (args[i] === "-n") n = parseInt(args[++i]) || 10;
-      else files.push(args[i]);
-    }
-    return files.map(p => {
-      const c = STATE.files.get(p);
-      if (c == null) return `tail: ${p}: 파일 없음`;
-      return c.split("\n").slice(-n).join("\n");
-    }).join("\n---\n");
-  },
-  find(args) {
-    let pattern = null;
-    let typeFilter = null;
-    for (let i = 0; i < args.length; i++) {
-      if (args[i] === "-name") pattern = args[++i];
-      else if (args[i] === "-type") typeFilter = args[++i];
-    }
-    let all = [...STATE.files.keys()];
-    if (pattern) {
-      const re = new RegExp("^" + pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
-      all = all.filter(p => re.test(p.split("/").pop()));
-    }
-    return all.length ? all.join("\n") : "(없음)";
-  },
-  pwd() { return "/"; },
-  tree() {
-    const all = [...STATE.files.keys()].sort();
-    if (!all.length) return "(빈 작업공간)";
-    return all.map((p, i) => (i === all.length - 1 ? "└─ " : "├─ ") + p + ` (${STATE.files.get(p).length}b)`).join("\n");
-  },
-  sed(args) {
-    let inPlace = false;
-    let expr = null;
-    const files = [];
-    for (const a of args) {
-      if (a === "-i") inPlace = true;
-      else if (a.startsWith("s/") || a.startsWith("s|")) expr = a;
-      else files.push(a);
-    }
-    if (!expr) return "usage: sed -i 's/A/B/g' <file>";
-    const sep = expr[1];
-    const m = expr.match(new RegExp(`^s\\${sep}((?:[^${sep}\\\\]|\\\\.)*)\\${sep}((?:[^${sep}\\\\]|\\\\.)*)\\${sep}([gimsy]*)$`));
-    if (!m) return "sed: 표현식 파싱 실패 (예: s/A/B/g)";
-    const [, pat, rep, flags] = m;
-    let re;
-    try { re = new RegExp(pat, flags.includes("g") ? flags : flags + "g"); } catch(e) { return `sed: ${e.message}`; }
-    const out = [];
-    for (const p of files) {
-      const c = STATE.files.get(p);
-      if (c == null) { out.push(`sed: ${p}: 파일 없음`); continue; }
-      const nc = c.replace(re, rep);
-      if (inPlace) {
-        STATE.files.set(p, nc);
-        out.push(`${p} 수정됨 (${(c.match(re) || []).length}건)`);
-      } else {
-        out.push(nc);
+      const requestBody = { ...body };
+      if (shrink < 1 && requestBody.max_tokens) {
+        requestBody.max_tokens = Math.max(600, Math.floor(requestBody.max_tokens * shrink));
       }
-    }
-    if (inPlace) {
-      renderFiles();
-      if (STATE.currentFile && files.includes(STATE.currentFile)) renderCode();
-    }
-    return out.join("\n");
-  },
-  touch(args) {
-    for (const p of args) {
-      if (!STATE.files.has(p)) STATE.files.set(p, "");
-    }
-    renderFiles();
-    return `${args.length}개 처리됨`;
-  },
-  clear() { return ""; },
-  help() {
-    return "사용 가능: ls, cat, echo, rm, cp, mv, grep, wc, head, tail, find, pwd, tree, sed, touch\n리다이렉트: > >>\n체인: ; &&";
-  },
-};
-
-function runShellLine(line) {
-  if (!line.trim()) return "";
-  // 리다이렉트 파싱: cmd > file 또는 cmd >> file
-  let appendMode = false;
-  let outFile = null;
-  let cmdPart = line;
-  // 단순 리다이렉트 파싱 (따옴표 안의 > 무시)
-  let inQ = false, qC = "";
-  let redirIdx = -1, redirLen = 1;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQ) { if (ch === qC) inQ = false; else if (ch === "\\") i++; continue; }
-    if (ch === '"' || ch === "'") { inQ = true; qC = ch; continue; }
-    if (ch === ">") {
-      redirIdx = i;
-      if (line[i + 1] === ">") { redirLen = 2; appendMode = true; }
+      let groqRes;
+      try {
+        groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${keyInfo.key}` },
+          body: JSON.stringify(requestBody),
+        });
+      } catch (e) {
+        sseSend(res, 'error', { message: `네트워크: ${e.message}` });
+        break;
+      }
+      if (groqRes.status === 429 || groqRes.status === 413) {
+        const text = await groqRes.text();
+        let waitMs = 30000;
+        const ra = groqRes.headers.get('retry-after');
+        if (ra) waitMs = parseFloat(ra) * 1000;
+        else {
+          const m = text.match(/try again in ([\d.]+)\s*(ms|s)/i);
+          if (m) waitMs = parseFloat(m[1]) * (m[2].toLowerCase() === 'ms' ? 1 : 1000);
+        }
+        waitMs = Math.min(Math.max(waitMs + 2000, 5000), 120000);
+        keyLimited.set(keyInfo.idx, Date.now() + waitMs);
+        if (groqRes.status === 413) shrink *= 0.75;
+        continue;
+      }
+      if (!groqRes.ok) {
+        const text = await groqRes.text();
+        console.error(`Groq ${groqRes.status}:`, text.slice(0, 500));
+        if (groqRes.status === 400) {
+          let parsed; try { parsed = JSON.parse(text); } catch(e) {}
+          const fg = parsed && parsed.error && parsed.error.failed_generation;
+          if (fg) {
+            sseSend(res, 'result', { choices: [{ message: { role: 'assistant', content: fg, tool_calls: null }, finish_reason: 'stop' }], usage: {} });
+            break;
+          }
+        }
+        sseSend(res, 'error', { message: 'Groq ' + groqRes.status, status: groqRes.status, body: text.slice(0, 500) });
+        break;
+      }
+      const data = await groqRes.json();
+      sseSend(res, 'result', data);
+      if (supabase && data.usage && user.id && user.id !== 'anon') {
+        supabase.from('usage_logs').insert({
+          user_id: user.id, model: requestBody.model || null,
+          prompt_tokens: data.usage.prompt_tokens || 0,
+          completion_tokens: data.usage.completion_tokens || 0,
+          total_tokens: data.usage.total_tokens || 0,
+          status_code: 200,
+        }).then(({ error }) => { if (error) console.warn('usage:', error.message); });
+      }
       break;
     }
-  }
-  if (redirIdx !== -1) {
-    cmdPart = line.slice(0, redirIdx).trim();
-    outFile = line.slice(redirIdx + redirLen).trim();
-  }
-
-  const tokens = shellTokenize(cmdPart);
-  if (!tokens.length) return "";
-  const [name, ...args] = tokens;
-  const fn = SHELL_CMDS[name];
-  const output = fn ? fn(args) : `${name}: command not found (help 로 명령 목록 확인)`;
-
-  if (outFile) {
-    const prev = appendMode ? (STATE.files.get(outFile) || "") : "";
-    const sep = appendMode && prev && !prev.endsWith("\n") ? "\n" : "";
-    STATE.files.set(outFile, prev + sep + output);
-    renderFiles();
-    return "";
-  }
-  return output;
-}
-
-function runShell(script) {
-  // ; 또는 && 로 분리 (따옴표 안 무시)
-  const parts = [];
-  let cur = "";
-  let inQ = false, qC = "";
-  for (let i = 0; i < script.length; i++) {
-    const ch = script[i];
-    if (inQ) { cur += ch; if (ch === qC) inQ = false; else if (ch === "\\" && i + 1 < script.length) { cur += script[++i]; } continue; }
-    if (ch === '"' || ch === "'") { inQ = true; qC = ch; cur += ch; continue; }
-    if (ch === ";" || (ch === "&" && script[i + 1] === "&")) {
-      parts.push({ cmd: cur, chainAnd: ch === "&" });
-      cur = "";
-      if (ch === "&") i++;
-      continue;
-    }
-    cur += ch;
-  }
-  if (cur.trim()) parts.push({ cmd: cur, chainAnd: false });
-
-  const outputs = [];
-  for (const p of parts) {
-    const out = runShellLine(p.cmd);
-    if (out !== "") outputs.push(out);
-  }
-  return outputs.join("\n");
-}
-
-/* =====================================================
-   Tool executors — 실제 도구 동작
-   ===================================================== */
-const TOOL_FNS = {
-  async think({ thought }) {
-    return { ok: true, message: thought || "" };
-  },
-  async bash({ command }) {
-    const res = await authFetch(`${STATE.serverUrl}/api/ws/bash`, {
-      method: "POST",
-      body: JSON.stringify({ command }),
-    });
-    const data = await res.json();
-    if (data.ok) syncWorkspaceFiles().catch(() => {});
-    return data;
-  },
-  async create_file({ path, content }) {
-    const res = await authFetch(`${STATE.serverUrl}/api/ws/write`, {
-      method: "POST",
-      body: JSON.stringify({ path, content }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      STATE.files.set(path, content);
-      renderFiles();
-      if (STATE.currentFile === path) renderCode();
-    }
-    return data;
-  },
-  async edit_file({ path, old_str, new_str }) {
-    const res = await authFetch(`${STATE.serverUrl}/api/ws/edit`, {
-      method: "POST",
-      body: JSON.stringify({ path, old_str, new_str }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      const readRes = await authFetch(`${STATE.serverUrl}/api/ws/read`, {
-        method: "POST", body: JSON.stringify({ path }),
-      });
-      const read = await readRes.json();
-      if (read.ok) {
-        STATE.files.set(path, read.content);
-        renderFiles();
-        if (STATE.currentFile === path) renderCode();
-      }
-    }
-    return data;
-  },
-  async read_file({ path }) {
-    const res = await authFetch(`${STATE.serverUrl}/api/ws/read`, {
-      method: "POST",
-      body: JSON.stringify({ path }),
-    });
-    const data = await res.json();
-    if (data.ok) STATE.files.set(path, data.content);
-    return data;
-  },
-  async list_files() {
-    const res = await authFetch(`${STATE.serverUrl}/api/ws/list`);
-    const data = await res.json();
-    if (data.ok) return { ok: true, files: (data.files || []).map(f => f.path) };
-    return data;
-  },
-  async delete_file({ path }) {
-    const res = await authFetch(`${STATE.serverUrl}/api/ws/delete`, {
-      method: "POST",
-      body: JSON.stringify({ path }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      STATE.files.delete(path);
-      renderFiles();
-      if (STATE.currentFile === path) { STATE.currentFile = null; renderCode(); }
-    }
-    return data;
-  },
-  async validate_html({ path }) {
-    return await validateHtmlFile(path);
-  },
-  async preview_html({ path }) {
-    if (!STATE.files.has(path) || STATE.files.get(path) === "") {
-      const readRes = await authFetch(`${STATE.serverUrl}/api/ws/read`, {
-        method: "POST", body: JSON.stringify({ path }),
-      });
-      const read = await readRes.json();
-      if (!read.ok) return read;
-      STATE.files.set(path, read.content);
-    }
-    showPreviewFromServer(path);
-    switchTab("preview");
-    return { ok: true, message: `${path} 미리보기 표시` };
-  },
-  finish({ summary }) {
-    return { ok: true, message: summary, _finish: true };
-  }
-};
-
-/* 서버 워크스페이스 → 로컬 캐시 sync */
-async function syncWorkspaceFiles() {
-  const res = await authFetch(`${STATE.serverUrl}/api/ws/list`);
-  const data = await res.json();
-  if (!data.ok) return;
-  const serverPaths = new Set((data.files || []).map(f => f.path));
-  for (const p of [...STATE.files.keys()]) {
-    if (!serverPaths.has(p)) STATE.files.delete(p);
-  }
-  for (const f of data.files || []) {
-    if (!STATE.files.has(f.path)) STATE.files.set(f.path, "");
-  }
-  renderFiles();
-}
-
-/* 서버 미리보기 URL로 iframe 세팅 */
-function showPreviewFromServer(path) {
-  const token = STATE.session?.access_token || "";
-  const userId = STATE.user?.id || "anon";
-  const url = `${STATE.serverUrl}/preview/${userId}/${path}?token=${encodeURIComponent(token)}&_=${Date.now()}`;
-  $("#noPreview").style.display = "none";
-  $("#previewWrap").style.display = "flex";
-  $("#previewFrame").src = url;
-  STATE.currentFile = path;
-  renderFiles();
-}
-
-/* =====================================================
-   Rendering — messages, tool cards, files
-   ===================================================== */
-function el(tag, cls, html) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (html != null) e.innerHTML = html;
-  return e;
-}
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-function escapeAttr(s) { return escapeHtml(s); }
-
-function renderUserMessage(text) {
-  hideEmpty();
-  const wrap = el("div", "msg-wrap");
-  const m = el("div", "msg user");
-  const bubble = el("div", "bubble");
-  bubble.textContent = text;
-  m.appendChild(bubble);
-  wrap.appendChild(m);
-  $("#messages").appendChild(wrap);
-  scrollMessages();
-}
-
-function renderAssistantText(text, append=false) {
-  hideEmpty();
-  let lastWrap = $("#messages").lastElementChild;
-  let last = lastWrap?.querySelector(".msg.assistant");
-  if (!append || !last) {
-    const wrap = el("div", "msg-wrap");
-    const m = el("div", "msg assistant");
-    const role = el("div", "msg-role", `<div class="role-avatar assistant"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round"><path d="M6 4 C8 9, 8 14, 5 20"/><path d="M12 4 C13 9, 13 14, 12 20"/><path d="M18 4 C18 9, 16 14, 19 20"/></svg></div><span>MCLAW</span>`);
-    const bubble = el("div", "bubble");
-    bubble.textContent = text;
-    m.appendChild(role);
-    m.appendChild(bubble);
-    wrap.appendChild(m);
-    $("#messages").appendChild(wrap);
-  } else {
-    last.querySelector(".bubble").textContent += text;
-  }
-  scrollMessages();
-}
-
-function ensureAssistantBlock() {
-  hideEmpty();
-  let last = $("#messages").lastElementChild?.querySelector(".msg.assistant");
-  if (last && last.dataset.active === "1") return last;
-  const wrap = el("div", "msg-wrap");
-  const m = el("div", "msg assistant");
-  m.dataset.active = "1";
-  const role = el("div", "msg-role", `<div class="role-avatar assistant"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round"><path d="M6 4 C8 9, 8 14, 5 20"/><path d="M12 4 C13 9, 13 14, 12 20"/><path d="M18 4 C18 9, 16 14, 19 20"/></svg></div><span>MCLAW</span>`);
-  m.appendChild(role);
-  wrap.appendChild(m);
-  $("#messages").appendChild(wrap);
-  scrollMessages();
-  return m;
-}
-
-function closeAssistantBlock() {
-  const last = $("#messages").lastElementChild?.querySelector(".msg.assistant");
-  if (last) last.dataset.active = "0";
-}
-
-function addThinking() {
-  const block = ensureAssistantBlock();
-  const t = el("div", "thinking", `<span></span><span></span><span></span>`);
-  t.dataset.role = "thinking";
-  block.appendChild(t);
-  scrollMessages();
-  return t;
-}
-function removeThinking() {
-  $$(".thinking[data-role='thinking']").forEach(t => t.remove());
-}
-
-function addAssistantText(text) {
-  if (!text) return;
-  const block = ensureAssistantBlock();
-  let bubble = [...block.children].find(c => c.classList.contains("bubble"));
-  if (!bubble) {
-    bubble = el("div", "bubble");
-    block.appendChild(bubble);
-  }
-  bubble.textContent += text;
-  scrollMessages();
-}
-
-function toolIconSVG(name) {
-  const icons = {
-    think: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1M6.34 6.34l.706.706M18.36 6.34l-.706.706M4 12h1M20 12h-1M12 6a6 6 0 0 0-3.32 11l.32.5v2.5h6v-2.5l.32-.5A6 6 0 0 0 12 6z"/></svg>`,
-    bash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
-    create_file: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>`,
-    edit_file: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
-    read_file: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
-    list_files: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
-    delete_file: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>`,
-    preview_html: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
-    validate_html: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
-    finish: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>`,
-  };
-  return icons[name] || `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/></svg>`;
-}
-
-function summarizeArgs(name, args) {
-  if (!args) return "";
-  if (name === "think") return args.thought || "";
-  if (name === "bash") return args.command || "";
-  if (name === "create_file" || name === "edit_file" || name === "read_file" || name === "delete_file" || name === "preview_html" || name === "validate_html") {
-    return args.path || "";
-  }
-  if (name === "list_files") return "";
-  if (name === "finish") return args.summary || "";
-  return JSON.stringify(args).slice(0, 80);
-}
-
-function renderToolArg(key, value) {
-  const isLong = typeof value === "string" && value.length > 120;
-  const isCode = ["content", "old_str", "new_str"].includes(key);
-  const row = el("div", "tc-row");
-  const k = el("div", "tc-key");
-  k.textContent = key;
-  const v = el("div", "tc-val" + ((isLong || isCode) ? " code scrollbar-visible" : ""));
-  if (typeof value !== "string") {
-    v.textContent = JSON.stringify(value, null, 2);
-  } else if (isLong) {
-    // 처음에는 미리보기만, 클릭하면 펼침
-    const preview = value.slice(0, 240);
-    v.textContent = preview + (value.length > 240 ? "…" : "");
-    if (value.length > 240) {
-      const more = el("div", "tc-expand");
-      more.textContent = `전체 보기 (${value.length}자)`;
-      more.addEventListener("click", (e) => {
-        e.stopPropagation();
-        v.textContent = value;
-        more.remove();
-      });
-      row.appendChild(k);
-      row.appendChild(v);
-      v.appendChild(more);
-      return row;
-    }
-  } else {
-    v.textContent = value;
-  }
-  row.appendChild(k);
-  row.appendChild(v);
-  return row;
-}
-
-function addToolCard(toolCall) {
-  const block = ensureAssistantBlock();
-  const card = el("div", "tool-card running");
-  card.dataset.id = toolCall.id;
-  const name = toolCall.function.name;
-  card.dataset.name = name;
-  let args = {};
-  try { args = JSON.parse(toolCall.function.arguments || "{}"); } catch(e) {}
-  const summary = summarizeArgs(name, args);
-
-  card.innerHTML = `
-    <div class="tool-head">
-      <div class="tool-icon">${toolIconSVG(name)}</div>
-      <div class="tool-name">${name}</div>
-      <div class="tool-summary">${escapeHtml(summary)}</div>
-      <div class="tool-toggle">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg>
-      </div>
-    </div>
-    <div class="tool-body"></div>
-  `;
-  const body = card.querySelector(".tool-body");
-  const argEntries = Object.entries(args);
-  if (argEntries.length === 0) {
-    const empty = el("div", "tc-row");
-    empty.innerHTML = `<div class="tc-key">args</div><div class="tc-val" style="color:var(--text-3)">(없음)</div>`;
-    body.appendChild(empty);
-  } else {
-    argEntries.forEach(([k, v]) => body.appendChild(renderToolArg(k, v)));
-  }
-  const result = el("div", "tc-result");
-  result.innerHTML = `<span style="color:var(--text-3);font-size:12px">실행 중…</span>`;
-  body.appendChild(result);
-
-  card.querySelector(".tool-head").addEventListener("click", () => card.classList.toggle("open"));
-  block.appendChild(card);
-  scrollMessages();
-  return card;
-}
-
-function completeToolCard(card, result) {
-  card.classList.remove("running");
-  card.classList.add(result.ok ? "success" : "error");
-  const resultEl = card.querySelector(".tc-result");
-  if (!resultEl) return;
-  if (result.ok) {
-    const text = result.content || result.message || (result.files ? result.files.join(", ") : JSON.stringify(result));
-    const truncated = String(text).length > 400;
-    resultEl.innerHTML = `<div style="display:flex;gap:6px;align-items:flex-start"><span class="tc-result-ok" style="font-weight:600">✓</span><div style="flex:1;font-family:'SF Mono',monospace;font-size:12px;white-space:pre-wrap;word-break:break-word">${escapeHtml(String(text).slice(0, 400))}${truncated ? "…" : ""}</div></div>`;
-  } else {
-    resultEl.innerHTML = `<div style="display:flex;gap:6px;align-items:flex-start"><span class="tc-result-err" style="font-weight:600">✗</span><div style="flex:1;font-family:'SF Mono',monospace;font-size:12px;white-space:pre-wrap;word-break:break-word">${escapeHtml(result.error || "오류")}</div></div>`;
-    card.classList.add("open");
-  }
-}
-
-function scrollMessages() {
-  const el = $("#messages");
-  el.scrollTop = el.scrollHeight;
-}
-function hideEmpty() { const e = $("#empty"); if (e) e.style.display = "none"; }
-function showEmpty() { const e = $("#empty"); if (e) e.style.display = "flex"; }
-
-/* =====================================================
-   Files & preview
-   ===================================================== */
-function renderFiles() {
-  const list = $("#filesList");
-  list.innerHTML = "";
-  $("#fileCountBadge").textContent = STATE.files.size;
-  if (STATE.files.size === 0) {
-    list.innerHTML = `<div class="no-art">파일이 아직 없습니다.</div>`;
-    return;
-  }
-  [...STATE.files.entries()].forEach(([path, content]) => {
-    const item = el("div", "file-item" + (STATE.currentFile === path ? " active" : ""));
-    const sizeKB = content.length / 1024;
-    const sizeStr = sizeKB < 1 ? `${content.length}B` : `${sizeKB.toFixed(1)}KB`;
-    item.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span>${escapeHtml(path)}</span>
-      <span class="size">${sizeStr}</span>
-    `;
-    item.addEventListener("click", () => {
-      STATE.currentFile = path;
-      renderFiles();
-      renderCode();
-      switchTab("code");
-    });
-    list.appendChild(item);
-  });
-}
-
-function renderCode() {
-  const view = $("#codeView");
-  if (!STATE.currentFile || !STATE.files.has(STATE.currentFile)) {
-    view.textContent = "파일을 선택해 주세요.";
-    return;
-  }
-  view.textContent = STATE.files.get(STATE.currentFile);
-}
-
-function showPreview(path) {
-  const html = STATE.files.get(path);
-  if (!html) return;
-  $("#noPreview").style.display = "none";
-  $("#previewWrap").style.display = "flex";
-  const frame = $("#previewFrame");
-  frame.srcdoc = html;
-  STATE.currentFile = path;
-  renderFiles();
-}
-
-function switchTab(name) {
-  $$(".tab").forEach(t => t.classList.toggle("active", t.dataset.pane === name));
-  $$(".art-pane").forEach(p => p.classList.toggle("active", p.dataset.pane === name));
-}
-
-/* =====================================================
-   History compression — 큰 파일 내용을 히스토리에서 제거
-   ===================================================== */
-function compressHistory() {
-  // 최신 어시스턴트 tool_calls 1개만 풀 유지, 나머지는 큰 인자 압축
-  let kept = 0;
-  for (let i = STATE.messages.length - 1; i >= 0; i--) {
-    const m = STATE.messages[i];
-    if (m.role === "assistant" && m.tool_calls) {
-      if (kept < 1) { kept++; continue; }
-      m.tool_calls = m.tool_calls.map(tc => {
-        try {
-          const args = JSON.parse(tc.function.arguments || "{}");
-          let changed = false;
-          for (const k of ["content", "new_str", "old_str"]) {
-            if (typeof args[k] === "string" && args[k].length > 200) {
-              args[k] = `<${args[k].length}자 생략 — 필요하면 read_file 호출>`;
-              changed = true;
-            }
-          }
-          if (!changed) return tc;
-          return { ...tc, function: { ...tc.function, arguments: JSON.stringify(args) } };
-        } catch(e) { return tc; }
-      });
-    }
-  }
-  // tool 결과도 read_file의 content는 압축
-  for (let i = 0; i < STATE.messages.length - 4; i++) {
-    const m = STATE.messages[i];
-    if (m.role === "tool" && typeof m.content === "string" && m.content.length > 600) {
-      m.content = m.content.slice(0, 300) + ` ...(${m.content.length}자 중 일부)`;
-    }
-  }
-}
-
-function estimateTokens() {
-  // 대충 4자=1토큰
-  let total = getSystemPrompt().length;
-  for (const m of STATE.messages) {
-    total += (m.content || "").length;
-    if (m.tool_calls) {
-      for (const tc of m.tool_calls) total += (tc.function.arguments || "").length + 50;
-    }
-  }
-  return Math.ceil(total / 4);
-}
-
-function trimIfTooLarge(maxTokens) {
-  // 압축 후에도 너무 크면 가장 오래된 user/assistant 페어부터 삭제
-  while (estimateTokens() > maxTokens && STATE.messages.length > 4) {
-    // 첫 user 메시지부터 다음 user 직전까지 삭제 (대화 한 턴)
-    let cut = 1;
-    while (cut < STATE.messages.length && STATE.messages[cut].role !== "user") cut++;
-    STATE.messages.splice(0, cut);
-  }
-}
-
-/* =====================================================
-   Groq API call (with tool calling)
-   ===================================================== */
-/* failed_generation 텍스트에서 도구 호출 복구 시도 */
-function tryRecoverToolCall(text) {
-  if (!text) return null;
-  // 1차: 그대로 JSON 파싱
-  try {
-    const parsed = JSON.parse(text);
-    let args = parsed.arguments;
-    if (typeof args === "string") args = JSON.parse(args);
-    if (parsed.name && args && typeof args === "object") return { name: parsed.name, args };
-  } catch(e) {}
-  // 2차: 정규식으로 추출
-  try {
-    const nameMatch = text.match(/"name"\s*:\s*"([^"]+)"/);
-    const argsMatch = text.match(/"arguments"\s*:\s*(\{[\s\S]*\})\s*\}?\s*$/);
-    if (nameMatch && argsMatch) {
-      let args;
-      try { args = JSON.parse(argsMatch[1]); }
-      catch(e) {
-        // 끝이 잘렸으면 닫는 괄호 추가 시도
-        let candidate = argsMatch[1];
-        for (let i = 0; i < 5; i++) {
-          try { args = JSON.parse(candidate); break; } catch(_) {}
-          candidate += '"}';
-          try { args = JSON.parse(candidate); break; } catch(_) {}
-          candidate = candidate.slice(0, -2) + "}";
-        }
-      }
-      if (args && typeof args === "object") return { name: nameMatch[1], args };
-    }
-  } catch(e) {}
-  return null;
-}
-
-async function callGroq(messages, retryCount = 0, opts = {}) {
-  if (!STATE.serverUrl) throw new Error("서버 URL이 설정되지 않았습니다. 설정에서 등록해주세요.");
-  if (!STATE.user) throw new Error("로그인이 필요합니다.");
-  if (STATE.shouldStop) throw new Error("사용자 중단");
-
-  const shrink = opts.shrinkFactor || 1.0;
-  compressHistory();
-  const MODEL_LIMITS = {
-    "llama-3.1-8b-instant": 2000,
-    "openai/gpt-oss-20b": 2800,
-    "openai/gpt-oss-120b": 2800,
-    "llama-3.3-70b-versatile": 2800,
-    "qwen/qwen3-32b": 2500,
-    "deepseek-r1-distill-llama-70b": 2500,
-  };
-  const limit = Math.floor((MODEL_LIMITS[STATE.model] || 2500) * shrink);
-  trimIfTooLarge(limit);
-
-  const body = {
-    model: STATE.model,
-    messages: [{ role: "system", content: getSystemPrompt() }, ...messages],
-    tools: TOOLS,
-    temperature: 0.6,
-    max_tokens: Math.max(800, Math.floor(2500 * shrink)),
-    parallel_tool_calls: false,
-  };
-
-  let result = null, errMsg = null;
-  let queueCard = null;
-
-  const res = await authFetch(`${STATE.serverUrl}/api/chat`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    if (res.status === 401) {
-      openLoginModal();
-      throw new Error("로그인이 만료되었습니다.");
-    }
-    const t = await res.text();
-    throw new Error(`Server ${res.status}: ${t.slice(0, 300)}`);
-  }
-
-  await readSSE(res, (event, data) => {
-    switch (event) {
-      case "queued":
-        queueCard = showServerQueueCard(data);
-        break;
-      case "processing":
-        if (queueCard) {
-          queueCard.querySelector(".tool-summary").textContent = "처리 시작";
-          queueCard.classList.remove("running");
-          queueCard.classList.add("success");
-          queueCard = null;
-        }
-        break;
-      case "waiting":
-        showServerWaitCard(data);
-        break;
-      case "result":
-        result = data;
-        break;
-      case "error":
-        errMsg = data.message || "서버 에러";
-        break;
-    }
-  });
-
-  if (errMsg) {
-    // 서버 에러 - 재시도 로직 (413/429는 서버가 처리하지만 로컬에서도)
-    if (retryCount < 3 && (errMsg.includes("413") || errMsg.includes("429"))) {
-      await new Promise(r => setTimeout(r, 3000));
-      return await callGroq(messages, retryCount + 1, { shrinkFactor: shrink * 0.8 });
-    }
-    throw new Error(errMsg);
-  }
-  if (!result) throw new Error("서버에서 응답을 받지 못했습니다.");
-  return result;
-}
-
-function showServerQueueCard(data) {
-  removeThinking();
-  const block = ensureAssistantBlock();
-  const card = el("div", "tool-card running system");
-  card.style.background = "var(--bg-2)";
-  card.innerHTML = `
-    <div class="tool-head" style="padding:8px 14px">
-      <div class="tool-icon"><svg class="no-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-      <div class="tool-name" style="color:var(--text-2)">대기열 진입</div>
-      <div class="tool-summary">앞에 ${data.ahead || 0}명 대기 (내 순번 ${data.position || 1})</div>
-    </div>
-  `;
-  block.appendChild(card);
-  scrollMessages();
-  return card;
-}
-
-function showServerWaitCard(data) {
-  removeThinking();
-  const block = ensureAssistantBlock();
-  const card = el("div", "tool-card running system");
-  card.style.background = "var(--bg-2)";
-  card.innerHTML = `
-    <div class="tool-head" style="padding:8px 14px">
-      <div class="tool-icon"><svg class="no-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-      <div class="tool-name" style="color:var(--text-2)">서버 대기</div>
-      <div class="tool-summary">${data.seconds || 20}초 후 자동 재개</div>
-    </div>
-  `;
-  block.appendChild(card);
-  scrollMessages();
-  addThinking();
-  return card;
-}
-
-function showConversationLimitCard(reason) {
-  removeThinking();
-  const block = ensureAssistantBlock();
-  const card = el("div", "tool-card error");
-  card.classList.add("open");
-  const msg = reason === "single"
-    ? "현재 API 키 1개의 TPM 한도(분당 토큰)에 도달했습니다. 대화가 길어져서 컨텍스트 자체가 한도를 압박해요."
-    : "등록된 모든 키가 한도에 걸렸고 풀리려면 1분 이상 걸려요. 새 대화로 시작하는 게 가장 빠릅니다.";
-  card.innerHTML = `
-    <div class="tool-head">
-      <div class="tool-icon"><svg class="no-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
-      <div class="tool-name">대화 한도 도달</div>
-      <div class="tool-summary">${reason === "single" ? "TPM 한도에 막힘" : "모든 키 한도"}</div>
-    </div>
-    <div class="tool-body" style="display:block;padding:14px 16px">
-      <p style="margin-bottom:12px;font-size:13px;line-height:1.6;color:var(--text-2)">${escapeHtml(msg)}</p>
-      <p style="margin-bottom:10px;font-size:12.5px;color:var(--text-3)">해결책 (위에서부터 추천):</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-primary" data-act="newchat">새 대화 시작</button>
-        <button class="btn btn-ghost" data-act="addkey">API 키 추가</button>
-      </div>
-    </div>
-  `;
-  card.querySelector('[data-act="newchat"]').addEventListener("click", () => newChat());
-  card.querySelector('[data-act="addkey"]').addEventListener("click", () => openSettings());
-  block.appendChild(card);
-  scrollMessages();
-}
-
-function showKeySwitchCard(fromIdx, toIdx) {
-  removeThinking();
-  const block = ensureAssistantBlock();
-  const card = el("div", "tool-card success system");
-  card.style.background = "var(--bg-2)";
-  card.innerHTML = `
-    <div class="tool-head" style="padding:8px 14px">
-      <div class="tool-icon"><svg class="no-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></div>
-      <div class="tool-name" style="color:var(--text-2)">key rotated</div>
-      <div class="tool-summary">키 ${fromIdx + 1} 한도 도달 → 키 ${toIdx + 1} 로 전환</div>
-    </div>
-  `;
-  block.appendChild(card);
-  scrollMessages();
-  addThinking();
-}
-
-async function waitWithUI(ms, reason) {
-  removeThinking();
-  const block = ensureAssistantBlock();
-  const card = el("div", "tool-card running system");
-  card.style.background = "var(--bg-2)";
-  const label = reason || "잠시 대기";
-  card.innerHTML = `
-    <div class="tool-head" style="padding:8px 14px">
-      <div class="tool-icon"><svg class="no-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-      <div class="tool-name" style="color:var(--text-2)">${escapeHtml(label)}</div>
-      <div class="tool-summary"><span class="wait-sec">${Math.ceil(ms/1000)}</span>초</div>
-      <button class="wait-stop" style="background:var(--bg-3);border-radius:6px;padding:3px 10px;font-size:11px;color:var(--text-2);margin-left:4px">중단</button>
-    </div>
-  `;
-  block.appendChild(card);
-  scrollMessages();
-  card.querySelector(".wait-stop").addEventListener("click", () => {
-    STATE.shouldStop = true;
-  });
-
-  const startedAt = Date.now();
-  return new Promise((resolve) => {
-    const tick = setInterval(() => {
-      if (STATE.shouldStop) {
-        clearInterval(tick);
-        card.classList.remove("running");
-        card.classList.add("error");
-        card.querySelector(".tool-summary").textContent = "중단됨";
-        const stopBtn = card.querySelector(".wait-stop"); if (stopBtn) stopBtn.remove();
-        resolve();
-        return;
-      }
-      const left = Math.ceil((ms - (Date.now() - startedAt)) / 1000);
-      const s = card.querySelector(".wait-sec");
-      if (s && left >= 0) s.textContent = left;
-      if (left <= 0) {
-        clearInterval(tick);
-        card.classList.remove("running");
-        card.classList.add("success");
-        card.querySelector(".tool-summary").textContent = "재개";
-        const stopBtn = card.querySelector(".wait-stop"); if (stopBtn) stopBtn.remove();
-        addThinking();
-        resolve();
-      }
-    }, 300);
-  });
-}
-
-/* =====================================================
-   Agent loop
-   ===================================================== */
-async function runAgent(userText) {
-  if (STATE.running) return;
-  STATE.running = true;
-  STATE.shouldStop = false;
-  // 이전 대화의 한도 상태 리셋 (새 요청 시작)
-  STATE.keyRateLimited.clear();
-  setSending(true);
-
-  STATE.messages.push({ role: "user", content: userText });
-  renderUserMessage(userText);
-
-  let steps = 0;
-  let retriedEmpty = false;
-  let recentFailures = [];  // {sig, error} 연속 실패 감지
-  let thinking = addThinking();
-
-  try {
-    while (steps < STATE.maxSteps && !STATE.shouldStop) {
-      steps++;
-      const data = await callGroq(STATE.messages);
-      // 복구된 도구 호출 알림
-      if (data._recovered) {
-        const block = ensureAssistantBlock();
-        const note = el("div", "tool-card success system");
-        note.style.background = "var(--bg-2)";
-        note.innerHTML = `
-          <div class="tool-head" style="padding:8px 14px">
-            <div class="tool-icon"><svg class="no-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></div>
-            <div class="tool-name" style="color:var(--text-2)">recovered</div>
-            <div class="tool-summary">잘린 JSON 출력 복구 후 도구 실행</div>
-          </div>
-        `;
-        block.appendChild(note);
-      }
-      // 컨텍스트 크기 표시 업데이트
-      const ctxBadge = $("#ctxBadge");
-      if (ctxBadge) {
-        const t = estimateTokens();
-        ctxBadge.textContent = t > 1000 ? `${(t/1000).toFixed(1)}kt` : `${t}t`;
-        ctxBadge.style.background = t > 4000 ? "var(--accent-soft)" : "var(--bg-3)";
-        ctxBadge.style.color = t > 4000 ? "var(--accent-2)" : "var(--text-2)";
-      }
-      const choice = data.choices?.[0];
-      if (!choice) throw new Error("Groq 응답이 비어있습니다.");
-      const msg = choice.message || {};
-
-      // 텍스트 응답 처리
-      if (thinking) { thinking.remove(); thinking = null; }
-      if (msg.content) addAssistantText(msg.content);
-
-      // 어시스턴트 메시지를 히스토리에 푸시 (tool_calls 포함)
-      const assistantHist = {
-        role: "assistant",
-        content: msg.content || "",
-      };
-      if (msg.tool_calls && msg.tool_calls.length) {
-        assistantHist.tool_calls = msg.tool_calls.map(tc => ({
-          id: tc.id,
-          type: "function",
-          function: { name: tc.function.name, arguments: tc.function.arguments }
-        }));
-      }
-      STATE.messages.push(assistantHist);
-
-      // 도구 호출이 없으면 종료 조건 확인
-      if (!msg.tool_calls || msg.tool_calls.length === 0) {
-        // 아직 사용자 요청 진행 중이면 한 번 유도
-        if (steps < STATE.maxSteps && !retriedEmpty) {
-          STATE.messages.push({
-            role: "user",
-            content: "[시스템] 도구 호출 없이 텍스트만 반환하지 마세요. 요청 완성을 위해 다음 도구를 호출하세요. 완성됐으면 finish 호출. 다시 되묻지 마세요."
-          });
-          retriedEmpty = true;
-          thinking = addThinking();
-          continue;
-        }
-        break;
-      }
-      retriedEmpty = false;
-
-      // 각 도구 호출 실행
-      let finished = false;
-      for (const tc of msg.tool_calls) {
-        if (STATE.shouldStop) break;
-        const name = tc.function.name;
-        let args = {};
-        try { args = JSON.parse(tc.function.arguments || "{}"); } catch(e) {
-          args = {};
-        }
-        const card = addToolCard(tc);
-        let result;
-        try {
-          const fn = TOOL_FNS[name];
-          if (!fn) result = { ok: false, error: `알 수 없는 도구: ${name}` };
-          else result = await fn(args);
-        } catch(e) {
-          result = { ok: false, error: e.message };
-        }
-        completeToolCard(card, result);
-
-        // 연속 실패 감지 - 같은 도구+같은 인자로 반복 실패 시 강제 개입
-        if (!result.ok) {
-          const sig = name + ":" + (JSON.stringify(args).slice(0, 150) || "");
-          recentFailures.push({ sig, error: result.error || "" });
-          if (recentFailures.length > 4) recentFailures = recentFailures.slice(-4);
-        } else {
-          recentFailures = [];
-        }
-
-        STATE.messages.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: JSON.stringify(result).slice(0, 4000),
-        });
-
-        if (result._finish) finished = true;
-      }
-
-      // 최근 2회 이상 같은 실패 시 시스템 메시지 강제 주입
-      if (recentFailures.length >= 2) {
-        const last = recentFailures[recentFailures.length - 1];
-        const prev = recentFailures[recentFailures.length - 2];
-        if (last.sig === prev.sig) {
-          STATE.messages.push({
-            role: "user",
-            content: `[시스템] 같은 시도가 반복 실패했습니다: "${last.error.slice(0, 120)}"\n지금 즉시 다른 전략으로 전환:\n1) list_files로 파일 목록 확인\n2) read_file로 실제 내용 확인\n3) 필요시 create_file로 재작성 또는 다른 문자열로 시도\n같은 실패를 3번째 반복하면 안 됩니다.`
-          });
-          recentFailures = [];  // 개입 후 리셋
-        }
-      }
-
-      if (finished) break;
-      thinking = addThinking();
-    }
-    if (STATE.shouldStop) {
-      addAssistantText("\n\n[중단됨]");
-    }
-  } catch(e) {
-    if (thinking) thinking.remove();
-    addAssistantText(`\n\n❌ 오류: ${e.message}`);
-    console.error(e);
+    if (tries >= MAX_TRIES && !cancelled) sseSend(res, 'error', { message: `재시도 ${MAX_TRIES}회 초과` });
+  } catch (e) {
+    sseSend(res, 'error', { message: e.message });
   } finally {
-    closeAssistantBlock();
-    STATE.running = false;
-    setSending(false);
-    saveConversation();
-  }
-}
-
-function setSending(running) {
-  const bar = $("#progressBar");
-  if (bar) bar.classList.toggle("running", !!running);
-  const btn = $("#sendBtn");
-  if (running) {
-    btn.classList.add("stop-btn");
-    btn.classList.remove("send-btn");
-    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`;
-    btn.onclick = () => { STATE.shouldStop = true; };
-  } else {
-    btn.classList.add("send-btn");
-    btn.classList.remove("stop-btn");
-    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>`;
-    btn.onclick = sendMessage;
-  }
-}
-
-/* =====================================================
-   Conversations persistence
-   ===================================================== */
-function saveConversation() {
-  // 서버 저장 시도 (백그라운드)
-  saveConversationToServer().catch(e => console.warn("save:", e));
-}
-
-function loadConversation(id) {
-  const conv = STATE.conversations.find(c => c.id === id);
-  if (!conv) return;
-  newChat(false);
-  STATE.currentConvId = id;
-  STATE.messages = conv.messages.slice();
-  STATE.files = new Map(conv.files);
-  $("#chatTitle").textContent = conv.title;
-  hideEmpty();
-  // 메시지 복원 (간단 버전: 사용자/어시스턴트 텍스트만)
-  for (const m of conv.messages) {
-    if (m.role === "user") renderUserMessage(m.content);
-    else if (m.role === "assistant") {
-      if (m.content) {
-        const block = ensureAssistantBlock();
-        const bubble = el("div", "bubble");
-        bubble.textContent = m.content;
-        block.appendChild(bubble);
-        closeAssistantBlock();
-      }
-      if (m.tool_calls) {
-        for (const tc of m.tool_calls) {
-          const card = addToolCard(tc);
-          completeToolCard(card, { ok: true, message: "(이전 실행)" });
-        }
-      }
-    }
-  }
-  renderFiles();
-  renderHistory();
-  // HTML 파일 있으면 미리보기
-  const htmlFile = [...STATE.files.keys()].find(p => p.endsWith(".html"));
-  if (htmlFile) showPreview(htmlFile);
-}
-
-function renderHistory() {
-  const list = $("#historyList");
-  list.innerHTML = "";
-  STATE.conversations.forEach(c => {
-    const item = el("div", "history-item" + (c.id === STATE.currentConvId ? " active" : ""));
-    item.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>${escapeHtml(c.title)}</span>`;
-    item.addEventListener("click", () => loadConversation(c.id));
-    list.appendChild(item);
-  });
-}
-
-function newChat(toast_ = true) {
-  STATE.messages = [];
-  STATE.files = new Map();
-  STATE.currentFile = null;
-  STATE.currentConvId = null;
-  $("#messages").innerHTML = `
-    <div class="empty" id="empty">
-      <h1>무엇을 만들어볼까요?</h1>
-      <p>요청하면 알아서 파일을 만들고, 수정하고, 미리보기까지 보여줘요. Claude 급 자율 에이전트를 한국어로.</p>
-      <div class="suggestions"></div>
-    </div>
-  `;
-  // 제안 다시 채우기
-  const presets = [
-    ["🎮 픽셀 클리커 게임", "업그레이드 + 효과음까지", "픽셀 아트 스타일 카운터 클리커 게임을 만들어줘. 클릭하면 점수가 올라가고, 자동 클리커 업그레이드도 사고, 효과음도 있게."],
-    ["💼 미니멀 포트폴리오", "AOAO 블루 스타일", "블루 컬러의 미니멀한 포트폴리오 페이지를 만들어줘. 자기소개, 프로젝트 카드 4개, 푸터 포함."],
-    ["🧊 Three.js 3D 씬", "마우스 컨트롤 포함", "Three.js로 회전하는 큐브와 마우스로 카메라 컨트롤 가능한 3D 씬을 만들어줘."],
-    ["🎨 드로잉 캔버스", "저장 기능 포함", "실시간 그림 그리기 캔버스 앱. 색상 선택, 굵기 조절, 지우개, 저장 버튼까지."],
-  ];
-  const sugBox = $("#empty .suggestions");
-  presets.forEach(([t, sub, p]) => {
-    const b = el("button", "suggest");
-    b.innerHTML = `<strong>${t}</strong>${sub}`;
-    b.dataset.prompt = p;
-    b.addEventListener("click", () => {
-      $("#input").value = p;
-      sendMessage();
-    });
-    sugBox.appendChild(b);
-  });
-
-  $("#previewFrame").srcdoc = "";
-  $("#previewWrap").style.display = "none";
-  $("#noPreview").style.display = "grid";
-  $("#chatTitle").textContent = "새 대화";
-  renderFiles();
-  renderCode();
-  switchTab("preview");
-  renderHistory();
-}
-
-/* =====================================================
-   UI wiring
-   ===================================================== */
-function sendMessage() {
-  const txt = $("#input").value.trim();
-  if (!txt || STATE.running) return;
-  $("#input").value = "";
-  autoResize($("#input"));
-  runAgent(txt);
-}
-
-function autoResize(ta) {
-  ta.style.height = "auto";
-  ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
-}
-
-$("#input").addEventListener("input", e => autoResize(e.target));
-$("#input").addEventListener("keydown", e => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
+    releaseSlot();
+    if (!cancelled) res.end();
   }
 });
 
-$("#sendBtn").addEventListener("click", sendMessage);
-
-$$(".suggest").forEach(b => b.addEventListener("click", () => {
-  $("#input").value = b.dataset.prompt;
-  sendMessage();
-}));
-
-$("#newChatBtn").addEventListener("click", () => newChat());
-$("#clearBtn").addEventListener("click", () => {
-  if (confirm("현재 대화를 비울까요?")) newChat();
-});
-
-$$(".tab").forEach(t => t.addEventListener("click", () => switchTab(t.dataset.pane)));
-
-$("#refreshPreview").addEventListener("click", () => {
-  const htmlFile = [...STATE.files.keys()].find(p => p.endsWith(".html"));
-  if (htmlFile) showPreview(htmlFile);
-});
-
-$("#downloadBtn").addEventListener("click", downloadCurrent);
-
-/* Sidebar / artifact toggle */
-$("#toggleSbBtn").addEventListener("click", () => $("#app").classList.toggle("no-sidebar"));
-$("#toggleArtBtn").addEventListener("click", () => $("#app").classList.toggle("no-artifact"));
-
-/* Theme */
-$("#themeBtn").addEventListener("click", toggleTheme);
-$("#cmdBtn").addEventListener("click", openCmdPalette);
-
-/* Settings modal */
-function openSettings() {
-  $("#modelSelect .cs-current").textContent = STATE.model;
-  $$("#modelSelect .cs-opt").forEach(o => o.classList.toggle("selected", o.dataset.value === STATE.model));
-  $("#maxSteps").value = STATE.maxSteps;
-  $("#reasoningSwitch").classList.toggle("on", STATE.reasoning);
-  $("#settingsModal").classList.add("open");
+// =========================================================
+// 워크스페이스 도구 API — 프론트가 tool_call 받으면 여기 호출
+// =========================================================
+async function toolAuthMiddleware(req, res, next) {
+  const user = await verifyUser(req);
+  if (!user) return res.status(401).json({ ok: false, error: '로그인 필요' });
+  req.user = user;
+  req.workspaceId = userWorkspaceId(user);
+  next();
 }
-function closeSettings() { $("#settingsModal").classList.remove("open"); }
 
-$("#settingsBtn").addEventListener("click", openSettings);
-$("#cancelSettings").addEventListener("click", closeSettings);
-$("#reasoningSwitch").addEventListener("click", () => {
-  $("#reasoningSwitch").classList.toggle("on");
+app.post('/api/ws/bash', toolAuthMiddleware, async (req, res) => {
+  const { command, timeout } = req.body;
+  if (!command) return res.json({ ok: false, error: '빈 명령' });
+  const result = await runBash(req.workspaceId, command, Math.min(timeout || 30000, 60000));
+  res.json(result);
 });
-$("#saveSettings").addEventListener("click", async () => {
-  STATE.maxSteps = Math.max(1, Math.min(50, parseInt($("#maxSteps").value, 10) || 25));
-  STATE.reasoning = $("#reasoningSwitch").classList.contains("on");
-  localStorage.setItem("aoao_model", STATE.model);
-  localStorage.setItem("aoao_max_steps", STATE.maxSteps);
-  localStorage.setItem("aoao_reasoning", STATE.reasoning ? "1" : "0");
-  $("#modelBadge").textContent = STATE.model.split("/").pop().split("-").slice(0, 3).join("-");
-  closeSettings();
 
-  // Supabase 초기화 재시도
-  if (initSupabase()) {
-    await refreshSession();
-    if (!STATE.user) openLoginModal();
+app.post('/api/ws/write', toolAuthMiddleware, async (req, res) => {
+  const { path: p, content } = req.body;
+  if (!p) return res.json({ ok: false, error: 'path 필요' });
+  try { res.json(await fsWrite(req.workspaceId, p, content || '')); }
+  catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/ws/read', toolAuthMiddleware, async (req, res) => {
+  const { path: p } = req.body;
+  if (!p) return res.json({ ok: false, error: 'path 필요' });
+  try { res.json(await fsRead(req.workspaceId, p)); }
+  catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/ws/edit', toolAuthMiddleware, async (req, res) => {
+  const { path: p, old_str, new_str } = req.body;
+  if (!p) return res.json({ ok: false, error: 'path 필요' });
+  try { res.json(await fsEdit(req.workspaceId, p, old_str || '', new_str || '')); }
+  catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/ws/delete', toolAuthMiddleware, async (req, res) => {
+  const { path: p } = req.body;
+  if (!p) return res.json({ ok: false, error: 'path 필요' });
+  try { res.json(await fsDelete(req.workspaceId, p)); }
+  catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/ws/list', toolAuthMiddleware, async (req, res) => {
+  res.json(await fsList(req.workspaceId));
+});
+
+app.post('/api/ws/reset', toolAuthMiddleware, async (req, res) => {
+  res.json(await workspaceReset(req.workspaceId));
+});
+
+// =========================================================
+// 미리보기 - workspace의 파일을 정적 서빙
+// URL: /preview/:userId/*
+// (auth 토큰은 쿼리로 - iframe 호환)
+// =========================================================
+app.get('/preview/:userId/*', async (req, res) => {
+  const token = req.query.token;
+  let userId = req.params.userId;
+  if (supabase && token) {
+    try {
+      const { data } = await supabase.auth.getUser(token);
+      if (data?.user?.id === userId) {
+        // OK
+      } else return res.status(403).send('Forbidden');
+    } catch (e) { return res.status(403).send('Forbidden'); }
   }
-});
-
-$("#settingsModal").addEventListener("click", e => {
-  if (e.target === $("#settingsModal")) closeSettings();
-});
-
-/* Custom dropdown */
-const cs = $("#modelSelect");
-cs.addEventListener("click", e => {
-  if (e.target.classList.contains("cs-opt")) {
-    STATE.model = e.target.dataset.value;
-    cs.querySelector(".cs-current").textContent = STATE.model;
-    $$("#modelSelect .cs-opt").forEach(o => o.classList.toggle("selected", o === e.target));
-    cs.classList.remove("open");
-  } else {
-    cs.classList.toggle("open");
-  }
-});
-document.addEventListener("click", e => {
-  if (!cs.contains(e.target)) cs.classList.remove("open");
-});
-
-/* Toast — 비활성화 (콘솔로만) */
-function toast(text) {
-  console.log("[MCLAW]", text);
-}
-
-/* Init */
-$("#modelBadge").textContent = STATE.model.split("/").pop().split("-").slice(0, 3).join("-");
-renderHistory();
-
-/* =====================================================
-   로그인 모달
-   ===================================================== */
-let authMode = "signin"; // "signin" | "signup"
-
-function openLoginModal() {
-  $("#loginError").style.display = "none";
-  $("#loginModal").classList.add("open");
-  setTimeout(() => $("#loginEmail").focus(), 100);
-}
-function closeLoginModal() {
-  $("#loginModal").classList.remove("open");
-}
-
-function updateAuthModeUI() {
-  const signup = authMode === "signup";
-  $("#loginTitle").textContent = signup ? "회원가입" : "로그인";
-  $("#loginSubtitle").textContent = signup
-    ? "이메일과 비밀번호로 새 계정을 만드세요."
-    : "MCLAW 계정으로 로그인하세요.";
-  $("#submitAuthBtn").textContent = signup ? "회원가입" : "로그인";
-  $("#toggleAuthMode").textContent = signup ? "로그인으로" : "회원가입으로";
-  $("#usernameField").style.display = signup ? "" : "none";
-}
-
-$("#toggleAuthMode").addEventListener("click", () => {
-  authMode = authMode === "signin" ? "signup" : "signin";
-  updateAuthModeUI();
-});
-
-$("#submitAuthBtn").addEventListener("click", async () => {
-  const email = $("#loginEmail").value.trim();
-  const password = $("#loginPassword").value;
-  const username = $("#loginUsername").value.trim();
-  const errEl = $("#loginError");
-  errEl.style.display = "none";
-
-  if (!email || !password) {
-    errEl.textContent = "이메일과 비밀번호를 입력해주세요.";
-    errEl.style.display = "block"; return;
-  }
-  if (!STATE.supa) {
-    errEl.textContent = "Supabase 설정을 먼저 저장해주세요 (⚙ 설정).";
-    errEl.style.display = "block"; return;
-  }
-
-  $("#submitAuthBtn").disabled = true;
-  $("#submitAuthBtn").textContent = "처리 중...";
+  const relPath = req.params[0] || 'index.html';
   try {
-    let result;
-    if (authMode === "signup") {
-      result = await signUp(email, password, username);
-      if (result.error) throw new Error(result.error);
-      if (result.needsConfirm) {
-        errEl.style.color = "var(--ok)";
-        errEl.textContent = "확인 이메일이 전송되었습니다. 이메일을 확인해주세요.";
-        errEl.style.display = "block";
-      } else {
-        closeLoginModal();
-      }
-    } else {
-      result = await signIn(email, password);
-      if (result.error) throw new Error(result.error);
-      closeLoginModal();
-    }
-  } catch(e) {
-    errEl.style.color = "var(--err)";
-    errEl.textContent = e.message;
-    errEl.style.display = "block";
-  } finally {
-    $("#submitAuthBtn").disabled = false;
-    updateAuthModeUI();
+    const workspace = await ensureWorkspace(userId);
+    const full = safePath(workspace, relPath);
+    if (!existsSync(full)) return res.status(404).send('Not found');
+    const ext = path.extname(full).toLowerCase();
+    const types = {
+      '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript',
+      '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
+      '.svg': 'image/svg+xml', '.gif': 'image/gif', '.ico': 'image/x-icon',
+      '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.woff2': 'font/woff2',
+    };
+    res.setHeader('Content-Type', types[ext] || 'text/plain');
+    createReadStream(full).pipe(res);
+  } catch (e) { res.status(500).send(e.message); }
+});
+
+// =========================================================
+// 워크스페이스 ZIP 다운로드
+// =========================================================
+app.get('/api/ws/download', toolAuthMiddleware, async (req, res) => {
+  try {
+    const workspace = await ensureWorkspace(req.workspaceId);
+    const list = await readdir(workspace);
+    if (list.length === 0) return res.status(400).json({ error: '워크스페이스 비어있음' });
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="mclaw-${Date.now()}.zip"`);
+    const proc = spawn('zip', ['-r', '-', '.', '-x', 'node_modules/*', '.git/*'], {
+      cwd: workspace,
+    });
+    proc.stdout.pipe(res);
+    proc.stderr.on('data', d => console.error('zip stderr:', d.toString()));
+    proc.on('error', e => res.status(500).send(e.message));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
-$("#loginPassword").addEventListener("keydown", e => {
-  if (e.key === "Enter") $("#submitAuthBtn").click();
-});
-$("#loginModal").addEventListener("click", e => {
-  if (e.target === $("#loginModal")) closeLoginModal();
-});
-
-$("#authBtn").addEventListener("click", () => {
-  if (STATE.user) {
-    if (confirm(`${STATE.user.email} 로그아웃?`)) signOut();
-  } else {
-    openLoginModal();
-  }
-});
-
-/* =====================================================
-   대화 저장/불러오기 (Supabase)
-   ===================================================== */
-async function saveConversationToServer() {
-  if (!STATE.serverUrl || !STATE.user || STATE.messages.length === 0) return;
-  const filesObj = {};
-  for (const [k, v] of STATE.files.entries()) filesObj[k] = v;
-  const title = STATE.messages.find(m => m.role === "user")?.content?.slice(0, 60) || "새 대화";
+// =========================================================
+// 대화 저장 (Supabase)
+// =========================================================
+app.post('/api/conversations', toolAuthMiddleware, async (req, res) => {
+  if (!supabase) return res.json({ ok: false, error: 'Supabase 미설정' });
+  const { id, title, messages, files } = req.body;
   const payload = {
-    id: STATE.currentConvId || undefined,
-    title,
-    messages: STATE.messages,
-    files: filesObj,
+    user_id: req.user.id,
+    title: title || '새 대화',
+    messages: messages || [],
+    files: files || {},
   };
-  try {
-    const res = await authFetch(`${STATE.serverUrl}/api/conversations`, {
-      method: "POST", body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (data.ok && data.data?.id) {
-      STATE.currentConvId = data.data.id;
-    }
-  } catch(e) { console.warn("save conv 실패:", e); }
-}
-
-async function loadConversationsList() {
-  if (!STATE.serverUrl || !STATE.user) return;
-  try {
-    const res = await authFetch(`${STATE.serverUrl}/api/conversations`);
-    const data = await res.json();
-    if (data.ok) {
-      STATE.conversations = data.data || [];
-      renderHistory();
-    }
-  } catch(e) {}
-}
-
-async function loadConversation(id) {
-  if (!STATE.serverUrl || !STATE.user) return;
-  const res = await authFetch(`${STATE.serverUrl}/api/conversations/${id}`);
-  const data = await res.json();
-  if (!data.ok) return;
-  const conv = data.data;
-  newChat(false);
-  STATE.currentConvId = id;
-  STATE.messages = conv.messages || [];
-  STATE.files = new Map(Object.entries(conv.files || {}));
-  $("#chatTitle").textContent = conv.title;
-  hideEmpty();
-  for (const m of STATE.messages) {
-    if (m.role === "user") renderUserMessage(m.content);
-    else if (m.role === "assistant") {
-      if (m.content) {
-        const block = ensureAssistantBlock();
-        const bubble = el("div", "bubble");
-        bubble.textContent = m.content;
-        block.appendChild(bubble);
-        closeAssistantBlock();
-      }
-      if (m.tool_calls) {
-        for (const tc of m.tool_calls) {
-          const card = addToolCard(tc);
-          completeToolCard(card, { ok: true, message: "(이전 실행)" });
-        }
-      }
-    }
+  if (id) {
+    const { data, error } = await supabase.from('conversations')
+      .update(payload).eq('id', id).eq('user_id', req.user.id).select().single();
+    res.json({ ok: !error, data, error: error?.message });
+  } else {
+    const { data, error } = await supabase.from('conversations')
+      .insert(payload).select().single();
+    res.json({ ok: !error, data, error: error?.message });
   }
-  renderFiles();
-  renderHistory();
-  const htmlFile = [...STATE.files.keys()].find(p => p.endsWith(".html"));
-  if (htmlFile) showPreviewFromServer(htmlFile);
-}
+});
 
-/* 초기화 - Supabase 시도 + 세션 복원 */
-(async () => {
-  if (STATE.supabaseUrl && STATE.supabaseKey) {
-    if (initSupabase()) {
-      await refreshSession();
-      if (STATE.user) await loadConversationsList();
-    }
-  }
-  updateAuthModeUI();
-  if (!STATE.user) {
-    setTimeout(openLoginModal, 400);
-  }
-})();
+app.get('/api/conversations', toolAuthMiddleware, async (req, res) => {
+  if (!supabase) return res.json({ ok: false, error: 'Supabase 미설정' });
+  const { data, error } = await supabase.from('conversations')
+    .select('id, title, updated_at, created_at')
+    .eq('user_id', req.user.id)
+    .order('updated_at', { ascending: false })
+    .limit(50);
+  res.json({ ok: !error, data, error: error?.message });
+});
 
-/* =====================================================
-   Viewport preset (모바일/태블릿/데스크톱)
-   ===================================================== */
-$$("#viewportToggle button").forEach(btn => {
-  btn.addEventListener("click", () => {
-    const vp = btn.dataset.vp;
-    $$("#viewportToggle button").forEach(b => b.classList.toggle("active", b === btn));
-    const frame = $("#previewFrame");
-    const wrap = $("#previewWrap");
-    frame.classList.remove("mobile", "tablet", "desktop");
-    frame.classList.add(vp);
-    wrap.classList.toggle("centered", vp !== "desktop");
+app.get('/api/conversations/:id', toolAuthMiddleware, async (req, res) => {
+  if (!supabase) return res.json({ ok: false, error: 'Supabase 미설정' });
+  const { data, error } = await supabase.from('conversations')
+    .select('*').eq('id', req.params.id).eq('user_id', req.user.id).single();
+  res.json({ ok: !error, data, error: error?.message });
+});
+
+app.delete('/api/conversations/:id', toolAuthMiddleware, async (req, res) => {
+  if (!supabase) return res.json({ ok: false, error: 'Supabase 미설정' });
+  const { error } = await supabase.from('conversations')
+    .delete().eq('id', req.params.id).eq('user_id', req.user.id);
+  res.json({ ok: !error, error: error?.message });
+});
+
+// =========================================================
+// 상태 조회
+// =========================================================
+app.get('/health', (req, res) => {
+  const now = Date.now();
+  const limitedKeys = [];
+  keyLimited.forEach((until, idx) => {
+    if (until > now) limitedKeys.push({ idx, secondsRemaining: Math.ceil((until - now) / 1000) });
+  });
+  res.json({
+    ok: true, inflight, queueLength: waitQueue.length,
+    totalKeys: GROQ_KEYS.length, limitedKeys,
+    supabase: !!supabase, maxConcurrent: MAX_CONCURRENT,
+    workspaceRoot: WORKSPACE_ROOT,
   });
 });
 
-/* =====================================================
-   Resizer — 아티팩트 패널 크기 조절
-   ===================================================== */
-(() => {
-  const resizer = $("#resizer");
-  if (!resizer) return;
-  let dragging = false;
-  let startX = 0, startW = 480;
-
-  resizer.addEventListener("mousedown", (e) => {
-    dragging = true;
-    startX = e.clientX;
-    startW = document.querySelector(".artifact").offsetWidth;
-    resizer.classList.add("dragging");
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    e.preventDefault();
-  });
-  window.addEventListener("mousemove", (e) => {
-    if (!dragging) return;
-    const diff = startX - e.clientX;
-    const newW = Math.max(320, Math.min(window.innerWidth - 400, startW + diff));
-    const app = $("#app");
-    const sbW = app.classList.contains("no-sidebar") ? 0 : 260;
-    app.style.gridTemplateColumns = `${sbW}px 1fr 5px ${newW}px`;
-    localStorage.setItem("aoao_artifact_w", newW);
-  });
-  window.addEventListener("mouseup", () => {
-    if (!dragging) return;
-    dragging = false;
-    resizer.classList.remove("dragging");
-    document.body.style.cursor = "";
-    document.body.style.userSelect = "";
-  });
-  // 저장된 폭 복원
-  const savedW = parseInt(localStorage.getItem("aoao_artifact_w") || "480");
-  if (savedW > 320) {
-    const sbW = $("#app").classList.contains("no-sidebar") ? 0 : 260;
-    $("#app").style.gridTemplateColumns = `${sbW}px 1fr 5px ${savedW}px`;
-  }
-})();
-
-/* =====================================================
-   순수 JS ZIP 인코더 (STORE 모드, JSZip 대체)
-   ===================================================== */
-// CRC-32 테이블
-const CRC_TABLE = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-    t[n] = c >>> 0;
-  }
-  return t;
-})();
-function crc32(bytes) {
-  let c = 0xFFFFFFFF;
-  for (let i = 0; i < bytes.length; i++) {
-    c = (c >>> 8) ^ CRC_TABLE[(c ^ bytes[i]) & 0xFF];
-  }
-  return (c ^ 0xFFFFFFFF) >>> 0;
-}
-function u16(n) { return [n & 0xFF, (n >>> 8) & 0xFF]; }
-function u32(n) { return [n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF]; }
-
-function makeZip(files) {
-  // files: Array of [name, string content]
-  const enc = new TextEncoder();
-  const parts = [];
-  const central = [];
-  let offset = 0;
-  for (const [name, content] of files) {
-    const nameBytes = enc.encode(name);
-    const data = enc.encode(content);
-    const crc = crc32(data);
-    const size = data.length;
-    // Local file header
-    const localHeader = [
-      ...u32(0x04034b50),  // signature
-      ...u16(20),          // version needed
-      ...u16(0),           // flags
-      ...u16(0),           // compression (STORE)
-      ...u16(0), ...u16(0),// mod time/date
-      ...u32(crc),
-      ...u32(size), ...u32(size),  // compressed/uncompressed
-      ...u16(nameBytes.length),
-      ...u16(0),           // extra length
-    ];
-    parts.push(new Uint8Array(localHeader));
-    parts.push(nameBytes);
-    parts.push(data);
-    // Central directory entry
-    const centralEntry = [
-      ...u32(0x02014b50),
-      ...u16(20), ...u16(20),
-      ...u16(0), ...u16(0),
-      ...u16(0), ...u16(0),
-      ...u32(crc),
-      ...u32(size), ...u32(size),
-      ...u16(nameBytes.length),
-      ...u16(0), ...u16(0),
-      ...u16(0), ...u16(0),
-      ...u32(0),
-      ...u32(offset),
-    ];
-    central.push(new Uint8Array(centralEntry));
-    central.push(nameBytes);
-    offset += localHeader.length + nameBytes.length + data.length;
-  }
-  const centralStart = offset;
-  let centralSize = 0;
-  for (const p of central) centralSize += p.length;
-  const eocd = [
-    ...u32(0x06054b50),
-    ...u16(0), ...u16(0),
-    ...u16(files.length), ...u16(files.length),
-    ...u32(centralSize),
-    ...u32(centralStart),
-    ...u16(0),
-  ];
-  return new Blob([...parts, ...central, new Uint8Array(eocd)], { type: "application/zip" });
-}
-
-/* =====================================================
-   ZIP 다운로드
-   ===================================================== */
-async function downloadZip() {
-  if (!STATE.serverUrl || !STATE.user) {
-    console.warn("서버 워크스페이스 필요");
-    return;
-  }
-  try {
-    const res = await authFetch(`${STATE.serverUrl}/api/ws/download`);
-    if (!res.ok) {
-      const t = await res.text();
-      console.warn("zip 실패:", t);
-      return;
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `mclaw-${Date.now()}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
-  } catch(e) {
-    console.warn("zip 다운로드 실패:", e);
-  }
-}
-$("#zipBtn").addEventListener("click", downloadZip);
-
-function downloadCurrent() {
-  if (!STATE.currentFile) {
-    const html = [...STATE.files.keys()].find(p => p.endsWith(".html"));
-    if (!html) return toast("다운로드할 파일이 없습니다");
-    STATE.currentFile = html;
-  }
-  const blob = new Blob([STATE.files.get(STATE.currentFile)], { type: "text/plain" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = STATE.currentFile.split("/").pop();
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-/* =====================================================
-   Theme toggle helper
-   ===================================================== */
-function toggleTheme() {
-  STATE.theme = STATE.theme === "light" ? "dark" : "light";
-  document.documentElement.setAttribute("data-theme", STATE.theme);
-  localStorage.setItem("aoao_theme", STATE.theme);
-  toast(`${STATE.theme === "light" ? "라이트" : "다크"} 모드`);
-}
-
-/* =====================================================
-   Command palette (⌘K / Ctrl+K)
-   ===================================================== */
-const CMD_ICONS = {
-  plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
-  settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9"/></svg>`,
-  theme: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
-  refresh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
-  download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
-  archive: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>`,
-  sidebar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>`,
-  panel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>`,
-  stop: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`,
-  file: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
-  clear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>`,
-};
-
-const COMMANDS = [
-  { name: "새 대화", desc: "현재 대화 비우고 시작", icon: "plus", hint: "Ctrl+N", act: () => newChat() },
-  { name: "실행 중단", desc: "에이전트 정지", icon: "stop", hint: "Esc", act: () => { STATE.shouldStop = true; toast("중단 요청됨"); } },
-  { name: "설정 열기", desc: "API 키, 모델, 최대 단계 수", icon: "settings", hint: "Ctrl+,", act: () => openSettings() },
-  { name: "라이트/다크 토글", desc: "테마 전환", icon: "theme", hint: "Ctrl+D", act: () => toggleTheme() },
-  { name: "미리보기 새로고침", desc: "iframe 리로드", icon: "refresh", hint: "Ctrl+R", act: () => {
-    const htmlFile = [...STATE.files.keys()].find(p => p.endsWith(".html"));
-    if (htmlFile) showPreview(htmlFile);
-  }},
-  { name: "현재 파일 다운로드", desc: "선택된 파일 저장", icon: "download", hint: "Ctrl+S", act: () => downloadCurrent() },
-  { name: "모든 파일 ZIP 다운로드", desc: "전체 프로젝트 저장", icon: "archive", hint: "Ctrl+Shift+S", act: () => downloadZip() },
-  { name: "사이드바 토글", desc: "왼쪽 패널 열기/닫기", icon: "sidebar", hint: "Ctrl+B", act: () => $("#app").classList.toggle("no-sidebar") },
-  { name: "아티팩트 패널 토글", desc: "오른쪽 패널 열기/닫기", icon: "panel", hint: "Ctrl+/", act: () => $("#app").classList.toggle("no-artifact") },
-  { name: "미리보기 탭", desc: "미리보기 보기", icon: "panel", act: () => switchTab("preview") },
-  { name: "파일 탭", desc: "파일 목록", icon: "file", act: () => switchTab("files") },
-  { name: "코드 탭", desc: "선택된 파일 코드", icon: "file", act: () => switchTab("code") },
-  { name: "뷰포트: 모바일", desc: "375×667", icon: "panel", act: () => $$("#viewportToggle button")[2].click() },
-  { name: "뷰포트: 태블릿", desc: "768×1024", icon: "panel", act: () => $$("#viewportToggle button")[1].click() },
-  { name: "뷰포트: 데스크톱", desc: "전체 크기", icon: "panel", act: () => $$("#viewportToggle button")[0].click() },
-];
-
-function openCmdPalette() {
-  $("#cmdPalette").classList.add("open");
-  $("#cmdInput").value = "";
-  $("#cmdInput").focus();
-  renderCmdList("");
-}
-function closeCmdPalette() { $("#cmdPalette").classList.remove("open"); }
-
-function renderCmdList(query) {
-  const list = $("#cmdList");
-  list.innerHTML = "";
-  const q = query.toLowerCase().trim();
-  const cmds = COMMANDS.filter(c => !q || c.name.toLowerCase().includes(q) || (c.desc || "").toLowerCase().includes(q));
-  const files = [...STATE.files.keys()].filter(p => !q || p.toLowerCase().includes(q));
-
-  if (cmds.length === 0 && files.length === 0) {
-    list.innerHTML = `<div class="cmd-empty">검색 결과 없음</div>`;
-    return;
-  }
-
-  let firstSet = false;
-  if (cmds.length) {
-    const head = el("div", "cmd-section-head");
-    head.textContent = "명령";
-    list.appendChild(head);
-    cmds.forEach((c) => {
-      const item = el("div", "cmd-item" + (!firstSet ? " selected" : ""));
-      firstSet = true;
-      item.innerHTML = `
-        <div class="cmd-icon-box">${CMD_ICONS[c.icon] || CMD_ICONS.settings}</div>
-        <div class="cmd-text">
-          <div class="cmd-name">${escapeHtml(c.name)}</div>
-          <div class="cmd-desc">${escapeHtml(c.desc || "")}</div>
-        </div>
-        ${c.hint ? `<div class="cmd-hint">${escapeHtml(c.hint)}</div>` : ""}
-      `;
-      item.addEventListener("click", () => { closeCmdPalette(); try { c.act(); } catch(e) { toast(e.message); } });
-      list.appendChild(item);
-    });
-  }
-  if (files.length) {
-    const head = el("div", "cmd-section-head");
-    head.textContent = "파일 열기";
-    list.appendChild(head);
-    files.slice(0, 10).forEach(p => {
-      const item = el("div", "cmd-item" + (!firstSet ? " selected" : ""));
-      firstSet = true;
-      item.innerHTML = `
-        <div class="cmd-icon-box">${CMD_ICONS.file}</div>
-        <div class="cmd-text">
-          <div class="cmd-name">${escapeHtml(p)}</div>
-          <div class="cmd-desc">${STATE.files.get(p).length}자</div>
-        </div>
-      `;
-      item.addEventListener("click", () => {
-        closeCmdPalette();
-        STATE.currentFile = p;
-        renderFiles(); renderCode(); switchTab("code");
-      });
-      list.appendChild(item);
-    });
-  }
-}
-
-$("#cmdInput").addEventListener("input", (e) => renderCmdList(e.target.value));
-$("#cmdInput").addEventListener("keydown", (e) => {
-  const items = [...$$("#cmdList .cmd-item")];
-  if (items.length === 0) return;
-  let cur = items.findIndex(i => i.classList.contains("selected"));
-  if (e.key === "ArrowDown") {
-    e.preventDefault();
-    if (cur >= 0) items[cur].classList.remove("selected");
-    const next = ((cur + 1) % items.length + items.length) % items.length;
-    items[next].classList.add("selected");
-    items[next].scrollIntoView({ block: "nearest" });
-  } else if (e.key === "ArrowUp") {
-    e.preventDefault();
-    if (cur >= 0) items[cur].classList.remove("selected");
-    const prev = cur <= 0 ? items.length - 1 : cur - 1;
-    items[prev].classList.add("selected");
-    items[prev].scrollIntoView({ block: "nearest" });
-  } else if (e.key === "Enter") {
-    e.preventDefault();
-    const sel = items.find(i => i.classList.contains("selected")) || items[0];
-    if (sel) sel.click();
-  } else if (e.key === "Escape") {
-    e.preventDefault();
-    closeCmdPalette();
-  }
-});
-$("#cmdPalette").addEventListener("click", (e) => {
-  if (e.target === $("#cmdPalette")) closeCmdPalette();
+// =========================================================
+// 홈
+// =========================================================
+app.get('/', (req, res) => {
+  res.sendFile(path.resolve('mclaw.html'));
 });
 
-/* =====================================================
-   Global keyboard shortcuts
-   ===================================================== */
-document.addEventListener("keydown", (e) => {
-  const mod = e.ctrlKey || e.metaKey;
-  const tag = e.target.tagName;
-  const isInput = tag === "INPUT" || tag === "TEXTAREA";
-
-  if (mod && e.key.toLowerCase() === "k") {
-    e.preventDefault();
-    openCmdPalette();
-  } else if (mod && e.key.toLowerCase() === "n" && !isInput) {
-    e.preventDefault();
-    newChat();
-  } else if (mod && e.key === ",") {
-    e.preventDefault();
-    openSettings();
-  } else if (mod && e.key.toLowerCase() === "d" && !isInput) {
-    e.preventDefault();
-    toggleTheme();
-  } else if (mod && e.key.toLowerCase() === "b") {
-    e.preventDefault();
-    $("#app").classList.toggle("no-sidebar");
-  } else if (mod && e.key === "/") {
-    e.preventDefault();
-    $("#app").classList.toggle("no-artifact");
-  } else if (mod && e.shiftKey && e.key.toLowerCase() === "s") {
-    e.preventDefault();
-    downloadZip();
-  } else if (mod && e.key.toLowerCase() === "s") {
-    e.preventDefault();
-    downloadCurrent();
-  } else if (mod && e.key.toLowerCase() === "r") {
-    e.preventDefault();
-    const htmlFile = [...STATE.files.keys()].find(p => p.endsWith(".html"));
-    if (htmlFile) showPreview(htmlFile);
-  } else if (e.key === "Escape") {
-    if ($("#cmdPalette").classList.contains("open")) { e.preventDefault(); closeCmdPalette(); }
-    else if ($("#settingsModal").classList.contains("open")) { e.preventDefault(); closeSettings(); }
-    else if (STATE.running) { e.preventDefault(); STATE.shouldStop = true; toast("중단 요청됨"); }
-  }
+app.listen(PORT, () => {
+  console.log(`🐾 MCLAW backend on :${PORT}`);
+  console.log(`   Groq keys: ${GROQ_KEYS.length}`);
+  console.log(`   Supabase: ${supabase ? 'connected' : 'disabled'}`);
+  console.log(`   Max concurrent: ${MAX_CONCURRENT}`);
+  console.log(`   Workspace root: ${WORKSPACE_ROOT}`);
 });
-</script>
-
-</body>
-</html>
