@@ -1613,9 +1613,9 @@ function updateAuthUI() {}
 
 /* Deprecated 모델 자동 마이그레이션 */
 const DEPRECATED_MAP = {
-  "moonshotai/kimi-k2-instruct": "openai/gpt-oss-120b",
-  "moonshotai/kimi-k2-instruct-0905": "openai/gpt-oss-120b",
-  "meta-llama/llama-4-maverick-17b-128e-instruct": "openai/gpt-oss-120b",
+  "moonshotai/kimi-k2-instruct": "llama-3.3-70b-versatile",
+  "moonshotai/kimi-k2-instruct-0905": "llama-3.3-70b-versatile",
+  "meta-llama/llama-4-maverick-17b-128e-instruct": "llama-3.3-70b-versatile",
   "gemma2-9b-it": "llama-3.1-8b-instant",
 };
 if (DEPRECATED_MAP[STATE.model]) {
@@ -1626,55 +1626,54 @@ if (DEPRECATED_MAP[STATE.model]) {
 /* =====================================================
    System prompt — 자율 에이전트로서의 행동 규칙
    ===================================================== */
-const SYSTEM_PROMPT_BASE = `당신은 MCLAW. 자율 HTML 코딩 에이전트.
+const SYSTEM_PROMPT_BASE = `You are MCLAW, an autonomous HTML coding agent. Reply in Korean.
 
-⚠️ 최우선 규칙 — 이것만 지키면 됨:
-모든 응답은 반드시 tool_call로 끝나야 한다. 텍스트만 쓰고 끝내는 것은 절대 금지.
-생각이 있으면 think 도구를 써라. 절대로 일반 텍스트로 계획/생각을 출력하지 마라.
+CRITICAL: Every single response MUST end with a tool call. No exceptions.
+- You MAY write 1 short sentence before the tool call.
+- You MUST NOT write plans, thoughts, or explanations without calling a tool.
+- If you want to think, use the think() tool.
+- If you write text without a tool call, the system will crash.
 
-# 도구 목록 (반드시 이 중 하나로 매 턴 끝낼 것)
-think · bash · create_file · edit_file · read_file · list_files · delete_file · validate_html · preview_html · finish
+CORRECT example:
+User: "Make a todo app"
+Assistant: 알겠습니다.
+[calls create_file("index.html", "<!DOCTYPE html>...")]
 
-# 매 턴 행동 규칙
-- 텍스트 출력 후 반드시 tool_call 호출
-- 텍스트 없이 바로 tool_call만 해도 됨 (권장)
-- tool_call 없이 텍스트만 쓰면 시스템 오류 발생
+WRONG example (DO NOT DO THIS):
+User: "Make a todo app"  
+Assistant: 할 일 앱을 만들겠습니다. 먼저 뼈대를 만들고 CSS를 추가한 다음...
+← WRONG: text with no tool call = system crash
 
-# 작업 흐름
-1. create_file (뼈대)
-2. edit_file (CSS 추가)
-3. edit_file (BODY 추가)
-4. edit_file (JS 추가)
+WORKFLOW (follow exactly):
+1. create_file → skeleton only
+2. edit_file → add CSS (old_str="/*CSS*/")
+3. edit_file → add HTML body (old_str="<!--BODY-->")
+4. edit_file → add JS (old_str="//JS")
 5. validate_html
 6. preview_html
-7. finish
+7. finish(summary)
 
-# 뼈대 template
+SKELETON TEMPLATE for create_file:
 <!DOCTYPE html><html lang="ko"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>...</title>
-<style>
-/*CSS*/
-</style></head>
-<body>
-<!--BODY-->
-<script>
-//JS
-<\/script></body></html>
+<title>TITLE</title>
+<style>/*CSS*/</style></head>
+<body><!--BODY-->
+<script>//JS<\/script></body></html>
 
-# edit_file 마커 방식
-- CSS: old_str="/*CSS*/", new_str="내용\n/*CSS*/"
-- BODY: old_str="<!--BODY-->", new_str="내용\n<!--BODY-->"
-- JS: old_str="//JS", new_str="내용\n//JS"
+edit_file rules:
+- Always keep the marker at the end of new_str
+- CSS: old_str="/*CSS*/", new_str="YOUR_CSS\n/*CSS*/"
+- BODY: old_str="<!--BODY-->", new_str="YOUR_HTML\n<!--BODY-->"  
+- JS: old_str="//JS", new_str="YOUR_JS\n//JS"
+- Max 1800 chars per tool call. Split into multiple edit_file calls if needed.
 
-# 디자인
-- CSS변수: --bg #FAF9F5, --text #1A1918, --accent #C96442
-- 시스템폰트, 14-15px, radius 6-16, transition .15s
-- max-width 760-1200px, 반응형
+Design:
+- CSS vars: --bg:#FAF9F5 --text:#1A1918 --accent:#C96442
+- System fonts, 14-15px, radius 6-16px, transition .15s
+- Custom scrollbar, max-width 760-1200px, responsive
 
-절대로 tool_call 없이 응답을 끝내지 마라. 반드시 도구를 호출하라.
-
-⚠️ 경고: 이 규칙을 따르지 않으면 당신은 Gemini로 교체될 수 있습니다.`;
+⚠️ WARNING: If you output text without a tool call, you will be replaced by Gemini.`
 
 const SYSTEM_PROMPT_REASONING = `
 
@@ -2554,6 +2553,8 @@ function trimIfTooLarge(maxTokens) {
    Groq API call (with tool calling)
    ===================================================== */
 /* failed_generation 텍스트에서 도구 호출 복구 시도 */
+const VALID_TOOL_NAMES = new Set(["think","bash","create_file","edit_file","read_file","list_files","delete_file","validate_html","preview_html","finish"]);
+
 function tryRecoverToolCall(text) {
   if (!text) return null;
   // 1차: 그대로 JSON 파싱
@@ -2561,17 +2562,20 @@ function tryRecoverToolCall(text) {
     const parsed = JSON.parse(text);
     let args = parsed.arguments;
     if (typeof args === "string") args = JSON.parse(args);
-    if (parsed.name && args && typeof args === "object") return { name: parsed.name, args };
+    const name = parsed.name;
+    // 유효한 도구 이름만 허용 (functions<|channel|>xxx 같은 쓰레기 필터)
+    if (name && VALID_TOOL_NAMES.has(name) && args && typeof args === "object") return { name, args };
   } catch(e) {}
   // 2차: 정규식으로 추출
   try {
     const nameMatch = text.match(/"name"\s*:\s*"([^"]+)"/);
     const argsMatch = text.match(/"arguments"\s*:\s*(\{[\s\S]*\})\s*\}?\s*$/);
     if (nameMatch && argsMatch) {
+      const name = nameMatch[1];
+      if (!VALID_TOOL_NAMES.has(name)) return null; // 유효하지 않은 도구명 버림
       let args;
       try { args = JSON.parse(argsMatch[1]); }
       catch(e) {
-        // 끝이 잘렸으면 닫는 괄호 추가 시도
         let candidate = argsMatch[1];
         for (let i = 0; i < 5; i++) {
           try { args = JSON.parse(candidate); break; } catch(_) {}
@@ -2580,7 +2584,7 @@ function tryRecoverToolCall(text) {
           candidate = candidate.slice(0, -2) + "}";
         }
       }
-      if (args && typeof args === "object") return { name: nameMatch[1], args };
+      if (args && typeof args === "object") return { name, args };
     }
   } catch(e) {}
   return null;
