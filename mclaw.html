@@ -2705,7 +2705,6 @@ function showServerWaitCard(data) {
   `;
   block.appendChild(card);
   scrollMessages();
-  addThinking();
   return card;
 }
 
@@ -2752,7 +2751,6 @@ function showKeySwitchCard(fromIdx, toIdx) {
   `;
   block.appendChild(card);
   scrollMessages();
-  addThinking();
 }
 
 async function waitWithUI(ms, reason) {
@@ -2819,27 +2817,15 @@ async function runAgent(userText) {
 
   let steps = 0;
   let retriedEmpty = false;
-  let recentFailures = [];  // {sig, error} 연속 실패 감지
+  let recentFailures = [];      // {sig, error} 연속 실패 감지
+  let consecutiveThinkOnly = 0; // think만 연속 호출 카운터
+  let recentSuccessSigs = [];   // 최근 성공 호출 시그니처 (반복 감지용)
   let thinking = addThinking();
 
   try {
     while (steps < STATE.maxSteps && !STATE.shouldStop) {
       steps++;
       const data = await callGroq(STATE.messages);
-      // 복구된 도구 호출 알림
-      if (data._recovered) {
-        const block = ensureAssistantBlock();
-        const note = el("div", "tool-card success system");
-        note.style.background = "var(--bg-2)";
-        note.innerHTML = `
-          <div class="tool-head" style="padding:8px 14px">
-            <div class="tool-icon"><svg class="no-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></div>
-            <div class="tool-name" style="color:var(--text-2)">recovered</div>
-            <div class="tool-summary">잘린 JSON 출력 복구 후 도구 실행</div>
-          </div>
-        `;
-        block.appendChild(note);
-      }
       // 컨텍스트 크기 표시 업데이트
       const ctxBadge = $("#ctxBadge");
       if (ctxBadge) {
@@ -2851,10 +2837,78 @@ async function runAgent(userText) {
       const choice = data.choices?.[0];
       if (!choice) throw new Error("Groq 응답이 비어있습니다.");
       const msg = choice.message || {};
+      const finishReason = choice.finish_reason || "";
 
-      // 텍스트 응답 처리
+      // thinking 점점이 제거
       if (thinking) { thinking.remove(); thinking = null; }
-      if (msg.content) addAssistantText(msg.content);
+
+      // ── content에서 도구 호출 복구 시도 ──────────────────────────────
+      // 모델이 tool_calls 없이 JSON을 content로 뱉는 경우 (failed_generation 등)
+      let recoveredCalls = null;
+      if ((!msg.tool_calls || msg.tool_calls.length === 0) && msg.content) {
+        const c = msg.content.trim();
+        // JSON처럼 생긴 경우만 복구 시도 ('{' 로 시작하거나 tool 이름 키워드 포함)
+        const looksLikeJson = c.startsWith("{") || c.startsWith("[") ||
+          [...VALID_TOOL_NAMES].some(n => c.includes(`"${n}"`));
+        if (looksLikeJson) {
+          // 배열 형태 [{...},{...}] 처리
+          if (c.startsWith("[")) {
+            try {
+              const arr = JSON.parse(c);
+              const calls = arr.map(item => {
+                const name = item.name || (item.function && item.function.name);
+                let args = item.arguments || (item.function && item.function.arguments) || {};
+                if (typeof args === "string") try { args = JSON.parse(args); } catch(_) {}
+                return VALID_TOOL_NAMES.has(name) && typeof args === "object" ? { name, args } : null;
+              }).filter(Boolean);
+              if (calls.length > 0) recoveredCalls = calls;
+            } catch(_) {}
+          }
+          // 단일 객체 처리
+          if (!recoveredCalls) {
+            const single = tryRecoverToolCall(c);
+            if (single) recoveredCalls = [single];
+          }
+          // 여러 개 붙어있는 경우 ({...}{...} 형태) 분리 시도
+          if (!recoveredCalls) {
+            const chunks = c.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)?\}/g) || [];
+            const calls = chunks.map(chunk => tryRecoverToolCall(chunk)).filter(Boolean);
+            if (calls.length > 0) recoveredCalls = calls;
+          }
+        }
+      }
+
+      // 복구된 도구 호출이 있으면 → tool_calls로 변환, content는 화면에 출력 안 함
+      if (recoveredCalls) {
+        // 합성 tool_calls 생성
+        msg.tool_calls = recoveredCalls.map((r, i) => ({
+          id: `recovered_${Date.now()}_${i}`,
+          type: "function",
+          function: { name: r.name, arguments: JSON.stringify(r.args) }
+        }));
+        msg.content = ""; // raw JSON을 화면에 노출하지 않음
+        data._recovered = true;
+        // recovered 알림 카드
+        const block = ensureAssistantBlock();
+        const note = el("div", "tool-card success system");
+        note.style.background = "var(--bg-2)";
+        note.innerHTML = `
+          <div class="tool-head" style="padding:8px 14px">
+            <div class="tool-icon"><svg class="no-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></div>
+            <div class="tool-name" style="color:var(--text-2)">recovered</div>
+            <div class="tool-summary">JSON 출력 → 도구 호출 복구 (${recoveredCalls.length}개)</div>
+          </div>
+        `;
+        block.appendChild(note);
+      } else if (msg.content) {
+        // 일반 텍스트만 화면에 출력 (JSON raw가 아닐 때)
+        const c = msg.content.trim();
+        const isRawJson = c.startsWith("{") || c.startsWith("[");
+        if (!isRawJson) {
+          addAssistantText(msg.content);
+        }
+        // raw JSON인데 복구 실패한 경우 → 조용히 버리고 재시도 유도
+      }
 
       // 어시스턴트 메시지를 히스토리에 푸시 (tool_calls 포함)
       const assistantHist = {
@@ -2888,6 +2942,7 @@ async function runAgent(userText) {
 
       // 각 도구 호출 실행
       let finished = false;
+      let allThink = msg.tool_calls.every(tc => tc.function.name === "think");
       for (const tc of msg.tool_calls) {
         if (STATE.shouldStop) break;
         const name = tc.function.name;
@@ -2913,6 +2968,12 @@ async function runAgent(userText) {
           if (recentFailures.length > 4) recentFailures = recentFailures.slice(-4);
         } else {
           recentFailures = [];
+          // think 제외 성공 호출 시그니처 추적 (무한 반복 감지)
+          if (name !== "think") {
+            const sig = name + ":" + JSON.stringify(args).slice(0, 100);
+            recentSuccessSigs.push(sig);
+            if (recentSuccessSigs.length > 6) recentSuccessSigs = recentSuccessSigs.slice(-6);
+          }
         }
 
         STATE.messages.push({
@@ -2937,10 +2998,39 @@ async function runAgent(userText) {
         }
       }
 
+      // 성공 호출인데 완전히 같은 시그니처가 최근 6개 중 3번 이상 → 강제 완료 촉구
+      if (recentSuccessSigs.length >= 6) {
+        const last3 = recentSuccessSigs.slice(-3);
+        if (last3[0] === last3[1] && last3[1] === last3[2]) {
+          STATE.messages.push({
+            role: "user",
+            content: `[시스템] 같은 작업(${last3[0].split(":")[0]})을 3회 이상 반복했습니다. 이미 완료된 것으로 보입니다. 지금 즉시 finish를 호출하거나, 다음 단계로 넘어가세요.`
+          });
+          recentSuccessSigs = [];
+        }
+      }
+
       if (finished) break;
+
+      // think만 연속 3회 이상 → 강제로 실제 행동 촉구
+      if (allThink) {
+        consecutiveThinkOnly++;
+        if (consecutiveThinkOnly >= 3) {
+          consecutiveThinkOnly = 0;
+          STATE.messages.push({
+            role: "user",
+            content: "[시스템] think만 반복하고 있습니다. 지금 즉시 create_file, edit_file 등 실제 도구를 호출하거나, 완료됐으면 finish를 호출하세요. think 추가 호출 금지."
+          });
+        }
+      } else {
+        consecutiveThinkOnly = 0;
+      }
+
       thinking = addThinking();
     }
     if (STATE.shouldStop) {
+      if (thinking) { thinking.remove(); thinking = null; }
+      removeThinking();
       addAssistantText("\n\n[중단됨]");
     }
   } catch(e) {
