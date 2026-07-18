@@ -18,11 +18,7 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 
 // === CORS ===
-const allowedOrigins = (process.env.FRONTEND_ORIGINS || '*').split(',').map(s => s.trim());
-app.use(cors({
-  origin: allowedOrigins.includes('*') ? true : allowedOrigins,
-  credentials: true,
-}));
+app.use(cors({ origin: true, credentials: true }));
 
 // === 환경변수 ===
 const GROQ_KEYS = (process.env.GROQ_KEYS || '').split(',').map(s => s.trim()).filter(Boolean);
