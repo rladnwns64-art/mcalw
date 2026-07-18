@@ -552,41 +552,7 @@ app.get('/health', (req, res) => {
 // 홈
 // =========================================================
 app.get('/', (req, res) => {
-  res.type('html').send(`
-<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>MCLAW backend</title>
-<style>
-body{font-family:system-ui,-apple-system,sans-serif;max-width:680px;margin:40px auto;padding:0 20px;color:#1A1918;background:#FAF9F5;line-height:1.6}
-h1{font-size:26px;letter-spacing:.08em;font-family:'SF Mono',monospace}
-.logo{display:inline-block;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#262624,#3A3735);position:relative;overflow:hidden;vertical-align:middle;margin-right:10px}
-.logo::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 28% 28%,#C96442,transparent 70%);opacity:.6}
-code{background:#F4F2EA;padding:2px 6px;border-radius:4px;font-size:13px}
-.stat{background:#F4F2EA;border-radius:8px;padding:12px 16px;margin:8px 0;font-size:13px}
-ul{padding-left:20px}
-</style></head><body>
-<h1><span class="logo"></span>MCLAW backend</h1>
-<p>Groq 프록시 + 사용자별 진짜 리눅스 워크스페이스 + Supabase 인증</p>
-<div class="stat">🔑 로드된 Groq 키: <b>${GROQ_KEYS.length}</b>개</div>
-<div class="stat">🔐 Supabase: <b>${supabase ? '연결됨' : '비활성 (익명 모드)'}</b></div>
-<div class="stat">📊 동시 처리 슬롯: <b>${MAX_CONCURRENT}</b>개</div>
-<div class="stat">💾 워크스페이스 루트: <code>${WORKSPACE_ROOT}</code></div>
-
-<h3>Endpoints</h3>
-<ul>
-  <li><code>POST /api/chat</code> — Groq 프록시 (SSE)</li>
-  <li><code>POST /api/ws/bash</code> — 진짜 bash 실행</li>
-  <li><code>POST /api/ws/write</code> — 파일 쓰기</li>
-  <li><code>POST /api/ws/read</code> — 파일 읽기</li>
-  <li><code>POST /api/ws/edit</code> — 파일 부분 편집</li>
-  <li><code>POST /api/ws/delete</code> — 파일 삭제</li>
-  <li><code>GET  /api/ws/list</code> — 파일 목록</li>
-  <li><code>POST /api/ws/reset</code> — 워크스페이스 초기화</li>
-  <li><code>GET  /api/ws/download</code> — 워크스페이스 ZIP</li>
-  <li><code>GET  /preview/:userId/*</code> — 미리보기</li>
-  <li><code>POST/GET/DELETE /api/conversations</code> — 대화 CRUD</li>
-  <li><code>GET  /health</code> — 상태</li>
-</ul>
-</body></html>
-  `);
+  res.sendFile(path.resolve('mclaw.html'));
 });
 
 app.listen(PORT, () => {
