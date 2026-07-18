@@ -1279,25 +1279,25 @@ button { cursor: pointer; background: none; border: none; }
     <div class="field">
       <label>모델</label>
       <div class="custom-select" id="modelSelect">
-        <div class="cs-current" style="padding:9px 12px;flex:1">openai/gpt-oss-120b</div>
+        <div class="cs-current" style="padding:9px 12px;flex:1">moonshotai/kimi-k2-instruct</div>
         <div class="cs-list">
-          <div class="cs-opt" data-value="openai/gpt-oss-120b">
-            GPT-OSS 120B <small>Groq 플래그십 · 추론 + 도구 호출 강력</small>
+          <div class="cs-opt" data-value="moonshotai/kimi-k2-instruct">
+            Kimi K2 <small>✅ 추천 · tool calling 안정적 · 코딩 강력</small>
           </div>
-          <div class="cs-opt" data-value="openai/gpt-oss-20b">
-            GPT-OSS 20B <small>가볍고 빠름 · 도구 호출 지원</small>
-          </div>
-          <div class="cs-opt" data-value="llama-3.3-70b-versatile">
-            Llama 3.3 70B <small>균형형 · 안정적</small>
-          </div>
-          <div class="cs-opt" data-value="qwen/qwen3-32b">
-            Qwen3 32B <small>추론 + 코딩</small>
+          <div class="cs-opt" data-value="qwen/qwen3.6-27b">
+            Qwen 3.6 27B <small>균형형 · tool calling 안정적</small>
           </div>
           <div class="cs-opt" data-value="deepseek-r1-distill-llama-70b">
-            DeepSeek R1 Distill <small>추론 강함</small>
+            DeepSeek R1 Distill 70B <small>추론 강함</small>
           </div>
-          <div class="cs-opt" data-value="llama-3.1-8b-instant">
-            Llama 3.1 8B <small>빠름 · 가벼움</small>
+          <div class="cs-opt" data-value="llama-3.3-70b-versatile">
+            Llama 3.3 70B <small>안정적 · 빠름</small>
+          </div>
+          <div class="cs-opt" data-value="openai/gpt-oss-120b">
+            GPT-OSS 120B <small>⚠️ tool calling 불안정</small>
+          </div>
+          <div class="cs-opt" data-value="openai/gpt-oss-20b">
+            GPT-OSS 20B <small>⚠️ tool calling 불안정</small>
           </div>
         </div>
       </div>
@@ -1424,7 +1424,7 @@ const STATE = {
   // 옛 로컬 모드 (호환성)
   apiKeys: [],
   currentKeyIdx: 0,
-  model: localStorage.getItem("aoao_model") || "openai/gpt-oss-120b",
+  model: localStorage.getItem("aoao_model") || "moonshotai/kimi-k2-instruct",
   maxSteps: parseInt(localStorage.getItem("aoao_max_steps") || "25", 10),
   reasoning: localStorage.getItem("aoao_reasoning") === "1",
   theme: localStorage.getItem("aoao_theme") || "light",
@@ -1613,7 +1613,7 @@ function updateAuthUI() {}
 
 /* Deprecated 모델 자동 마이그레이션 */
 const DEPRECATED_MAP = {
-  "moonshotai/kimi-k2-instruct": "llama-3.3-70b-versatile",
+  "moonshotai/kimi-k2-instruct-OLD": "moonshotai/kimi-k2-instruct",
   "moonshotai/kimi-k2-instruct-0905": "llama-3.3-70b-versatile",
   "meta-llama/llama-4-maverick-17b-128e-instruct": "llama-3.3-70b-versatile",
   "gemma2-9b-it": "llama-3.1-8b-instant",
@@ -2600,6 +2600,8 @@ async function callGroq(messages, retryCount = 0, opts = {}) {
   const MODEL_LIMITS = {
     "llama-3.1-8b-instant": 2000,
     "openai/gpt-oss-20b": 2800,
+    "moonshotai/kimi-k2-instruct": 3000,
+    "qwen/qwen3.6-27b": 3000,
     "openai/gpt-oss-120b": 2800,
     "llama-3.3-70b-versatile": 2800,
     "qwen/qwen3-32b": 2500,
