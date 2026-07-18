@@ -18,6 +18,7 @@ RUN npm install --production
 
 # 앱 코드
 COPY server.js ./
+COPY mclaw.html ./
 
 # 워크스페이스 루트
 RUN mkdir -p /tmp/mclaw_workspaces && chmod 777 /tmp/mclaw_workspaces
