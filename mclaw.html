@@ -1149,6 +1149,7 @@ button { cursor: pointer; background: none; border: none; }
       <div class="chat-title">
         <span id="chatTitle">새 대화</span>
         <span class="badge" id="modelBadge">gpt-oss-120b</span>
+
         <span class="badge" id="keyBadge" style="background:var(--bg-3);color:var(--text-2);display:none">key 1/1</span>
         <span class="badge" id="ctxBadge" style="background:var(--bg-3);color:var(--text-2)" title="대략적인 컨텍스트 토큰 수">0t</span>
       </div>
@@ -1279,25 +1280,22 @@ button { cursor: pointer; background: none; border: none; }
     <div class="field">
       <label>모델</label>
       <div class="custom-select" id="modelSelect">
-        <div class="cs-current" style="padding:9px 12px;flex:1">moonshotai/kimi-k2-instruct</div>
+        <div class="cs-current" style="padding:9px 12px;flex:1">openai/gpt-oss-120b</div>
         <div class="cs-list">
-          <div class="cs-opt" data-value="moonshotai/kimi-k2-instruct">
-            Kimi K2 <small>✅ 추천 · tool calling 안정적 · 코딩 강력</small>
+          <div class="cs-opt" data-value="openai/gpt-oss-120b">
+            GPT-OSS 120B <small>✅ 추천 · 추론 강력 · tool calling 안정적</small>
           </div>
           <div class="cs-opt" data-value="qwen/qwen3.6-27b">
-            Qwen 3.6 27B <small>균형형 · tool calling 안정적</small>
-          </div>
-          <div class="cs-opt" data-value="deepseek-r1-distill-llama-70b">
-            DeepSeek R1 Distill 70B <small>추론 강함</small>
-          </div>
-          <div class="cs-opt" data-value="llama-3.3-70b-versatile">
-            Llama 3.3 70B <small>안정적 · 빠름</small>
-          </div>
-          <div class="cs-opt" data-value="openai/gpt-oss-120b">
-            GPT-OSS 120B <small>⚠️ tool calling 불안정</small>
+            Qwen 3.6 27B <small>균형형 · tool calling 안정적 · 빠름</small>
           </div>
           <div class="cs-opt" data-value="openai/gpt-oss-20b">
-            GPT-OSS 20B <small>⚠️ tool calling 불안정</small>
+            GPT-OSS 20B <small>경량 · 빠름</small>
+          </div>
+          <div class="cs-opt" data-value="llama-3.3-70b-versatile">
+            Llama 3.3 70B <small>⚠️ 2026.08.16 종료 예정</small>
+          </div>
+          <div class="cs-opt" data-value="llama-3.1-8b-instant">
+            Llama 3.1 8B <small>⚠️ 2026.08.16 종료 예정 · 가장 빠름</small>
           </div>
         </div>
       </div>
@@ -1424,7 +1422,7 @@ const STATE = {
   // 옛 로컬 모드 (호환성)
   apiKeys: [],
   currentKeyIdx: 0,
-  model: localStorage.getItem("aoao_model") || "moonshotai/kimi-k2-instruct",
+  model: localStorage.getItem("aoao_model") || "openai/gpt-oss-120b",
   maxSteps: parseInt(localStorage.getItem("aoao_max_steps") || "25", 10),
   reasoning: localStorage.getItem("aoao_reasoning") === "1",
   theme: localStorage.getItem("aoao_theme") || "light",
@@ -1613,10 +1611,16 @@ function updateAuthUI() {}
 
 /* Deprecated 모델 자동 마이그레이션 */
 const DEPRECATED_MAP = {
-  "moonshotai/kimi-k2-instruct-OLD": "moonshotai/kimi-k2-instruct",
-  "moonshotai/kimi-k2-instruct-0905": "llama-3.3-70b-versatile",
-  "meta-llama/llama-4-maverick-17b-128e-instruct": "llama-3.3-70b-versatile",
-  "gemma2-9b-it": "llama-3.1-8b-instant",
+  // Groq에서 종료된 모델 → 현재 추천 대체 모델로 자동 이전
+  "moonshotai/kimi-k2-instruct":        "openai/gpt-oss-120b",  // 종료 2025.10.10
+  "moonshotai/kimi-k2-instruct-OLD":    "openai/gpt-oss-120b",
+  "moonshotai/kimi-k2-instruct-0905":   "openai/gpt-oss-120b",  // 종료 2026.04.15
+  "deepseek-r1-distill-llama-70b":      "openai/gpt-oss-120b",  // 종료 2025.10.02
+  "meta-llama/llama-4-maverick-17b-128e-instruct": "openai/gpt-oss-120b", // 종료 2026.03.09
+  "meta-llama/llama-4-scout-17b-16e-instruct":     "openai/gpt-oss-120b", // 종료 2026.07.17
+  "qwen/qwen3-32b":                     "openai/gpt-oss-120b",  // 종료 2026.07.17
+  "gemma2-9b-it":                       "openai/gpt-oss-20b",   // 종료 2025.10.08
+  "llama-3.1-70b-versatile":            "openai/gpt-oss-120b",
 };
 if (DEPRECATED_MAP[STATE.model]) {
   STATE.model = DEPRECATED_MAP[STATE.model];
@@ -2598,14 +2602,11 @@ async function callGroq(messages, retryCount = 0, opts = {}) {
   const shrink = opts.shrinkFactor || 1.0;
   compressHistory();
   const MODEL_LIMITS = {
-    "llama-3.1-8b-instant": 2000,
-    "openai/gpt-oss-20b": 2800,
-    "moonshotai/kimi-k2-instruct": 3000,
-    "qwen/qwen3.6-27b": 3000,
-    "openai/gpt-oss-120b": 2800,
+    "openai/gpt-oss-120b":     3000,
+    "openai/gpt-oss-20b":      2800,
+    "qwen/qwen3.6-27b":        3000,
     "llama-3.3-70b-versatile": 2800,
-    "qwen/qwen3-32b": 2500,
-    "deepseek-r1-distill-llama-70b": 2500,
+    "llama-3.1-8b-instant":    2000,
   };
   const limit = Math.floor((MODEL_LIMITS[STATE.model] || 2500) * shrink);
   trimIfTooLarge(limit);
@@ -2945,6 +2946,7 @@ async function runAgent(userText) {
   } catch(e) {
     if (thinking) thinking.remove();
     addAssistantText(`\n\n❌ 오류: ${e.message}`);
+    toast(`오류: ${e.message}`, "error");
     console.error(e);
   } finally {
     closeAssistantBlock();
@@ -3171,8 +3173,19 @@ document.addEventListener("click", e => {
 });
 
 /* Toast — 비활성화 (콘솔로만) */
-function toast(text) {
+function toast(text, type = "default") {
   console.log("[MCLAW]", text);
+  const el = $("#toast");
+  if (!el) return;
+  el.style.background = "";
+  el.style.color = "";
+  if (type === "error") { el.style.background = "var(--err)"; el.style.color = "#fff"; }
+  else if (type === "success") { el.style.background = "var(--ok)"; el.style.color = "#fff"; }
+  else if (type === "warn") { el.style.background = "var(--warn)"; el.style.color = "#fff"; }
+  el.textContent = text;
+  el.classList.add("show");
+  clearTimeout(el._tid);
+  el._tid = setTimeout(() => el.classList.remove("show"), 3000);
 }
 
 /* Init */
@@ -3566,7 +3579,7 @@ const CMD_ICONS = {
 
 const COMMANDS = [
   { name: "새 대화", desc: "현재 대화 비우고 시작", icon: "plus", hint: "Ctrl+N", act: () => newChat() },
-  { name: "실행 중단", desc: "에이전트 정지", icon: "stop", hint: "Esc", act: () => { STATE.shouldStop = true; toast("중단 요청됨"); } },
+  { name: "실행 중단", desc: "에이전트 정지", icon: "stop", hint: "Esc", act: () => { STATE.shouldStop = true; toast("중단 요청됨", "warn"); } },
   { name: "설정 열기", desc: "API 키, 모델, 최대 단계 수", icon: "settings", hint: "Ctrl+,", act: () => openSettings() },
   { name: "라이트/다크 토글", desc: "테마 전환", icon: "theme", hint: "Ctrl+D", act: () => toggleTheme() },
   { name: "미리보기 새로고침", desc: "iframe 리로드", icon: "refresh", hint: "Ctrl+R", act: () => {
@@ -3621,7 +3634,7 @@ function renderCmdList(query) {
         </div>
         ${c.hint ? `<div class="cmd-hint">${escapeHtml(c.hint)}</div>` : ""}
       `;
-      item.addEventListener("click", () => { closeCmdPalette(); try { c.act(); } catch(e) { toast(e.message); } });
+      item.addEventListener("click", () => { closeCmdPalette(); try { c.act(); } catch(e) { toast(e.message, "error"); } });
       list.appendChild(item);
     });
   }
@@ -3718,7 +3731,7 @@ document.addEventListener("keydown", (e) => {
   } else if (e.key === "Escape") {
     if ($("#cmdPalette").classList.contains("open")) { e.preventDefault(); closeCmdPalette(); }
     else if ($("#settingsModal").classList.contains("open")) { e.preventDefault(); closeSettings(); }
-    else if (STATE.running) { e.preventDefault(); STATE.shouldStop = true; toast("중단 요청됨"); }
+    else if (STATE.running) { e.preventDefault(); STATE.shouldStop = true; toast("중단 요청됨", "warn"); }
   }
 });
 </script>
