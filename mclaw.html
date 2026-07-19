@@ -1388,10 +1388,19 @@ async function validateHtmlFile(path) {
       window.removeEventListener("message", listener);
       if (iframe.parentNode) document.body.removeChild(iframe);
       const errs = e.data.e || [], warns = e.data.w || [];
-      const msg = errs.length ? `❌ 에러 ${errs.length}개: ${errs.slice(0, 3).join(" | ")}`
-                : warns.length ? `⚠ 경고 ${warns.length}개: ${warns.slice(0, 3).join(" | ")}`
-                : `✓ 에러/경고 없음`;
-      resolve({ ok: true, message: msg, errors: errs.slice(0, 5), warnings: warns.slice(0, 5) });
+      if (errs.length) {
+        resolve({
+          ok: false,
+          error: `JS 에러 ${errs.length}개 발견:\n${errs.slice(0, 5).map((e, i) => `  ${i+1}. ${e}`).join("\n")}\n\n반드시 edit_file로 수정 후 다시 validate_html 호출하세요.`,
+          errors: errs.slice(0, 5),
+          warnings: warns.slice(0, 5),
+        });
+      } else {
+        const msg = warns.length
+          ? `⚠ 경고 ${warns.length}개 (에러 없음): ${warns.slice(0, 3).join(" | ")}`
+          : `✓ 에러/경고 없음 — 완성`;
+        resolve({ ok: true, message: msg, errors: [], warnings: warns.slice(0, 5) });
+      }
     };
     window.addEventListener("message", listener);
     iframe.srcdoc = wrapped;
@@ -1653,8 +1662,8 @@ WORKFLOW (follow exactly):
 2. edit_file → add CSS (old_str="/*CSS*/")
 3. edit_file → add HTML body (old_str="<!--BODY-->")
 4. edit_file → add JS (old_str="//JS")
-5. validate_html
-6. preview_html
+5. validate_html → if errors found: MUST fix with edit_file, then validate_html again. Repeat until clean.
+6. preview_html (only after validate_html returns ok)
 7. finish(summary)
 
 SKELETON TEMPLATE for create_file:
@@ -1671,6 +1680,20 @@ edit_file rules:
 - BODY: old_str="<!--BODY-->", new_str="YOUR_HTML\n<!--BODY-->"  
 - JS: old_str="//JS", new_str="YOUR_JS\n//JS"
 - Max 1800 chars per tool call. Split into multiple edit_file calls if needed.
+
+VALIDATION & ERROR FIX RULES (CRITICAL):
+- validate_html returning ok:false means there are JS errors. You MUST fix them.
+- Read the error message carefully and fix the exact cause with edit_file.
+- After fixing, call validate_html again to confirm the fix worked.
+- Do NOT call preview_html or finish until validate_html returns ok:true.
+- If the same error persists after 2 fix attempts, rewrite the JS section entirely with create_file.
+
+REPETITION RULES:
+- Doing the same edit_file with the exact same old_str twice = you are stuck. Try a different approach.
+- If edit_file fails because old_str not found: call read_file first, find the actual text, then edit.
+- Repeating the same successful operation on the same file more than needed = waste. Move to next step.
+- Multiple edit_file calls on different sections of the same file = OK (not repetition).
+- Multiple create_file / edit_file for different files = OK (not repetition).
 
 Design:
 - CSS vars: --bg:#FAF9F5 --text:#1A1918 --accent:#C96442
@@ -2819,7 +2842,8 @@ async function runAgent(userText) {
   let retriedEmpty = false;
   let recentFailures = [];      // {sig, error} 연속 실패 감지
   let consecutiveThinkOnly = 0; // think만 연속 호출 카운터
-  let recentSuccessSigs = [];   // 최근 성공 호출 시그니처 (반복 감지용)
+  let lastProgressSig = null;   // 가장 최근 "진전" 시그니처 (파일명+내용길이)
+  let noProgressCount = 0;      // 진전 없는 스텝 카운터
   let thinking = addThinking();
 
   try {
@@ -2961,18 +2985,24 @@ async function runAgent(userText) {
         }
         completeToolCard(card, result);
 
-        // 연속 실패 감지 - 같은 도구+같은 인자로 반복 실패 시 강제 개입
+        // 연속 실패 감지
         if (!result.ok) {
           const sig = name + ":" + (JSON.stringify(args).slice(0, 150) || "");
           recentFailures.push({ sig, error: result.error || "" });
           if (recentFailures.length > 4) recentFailures = recentFailures.slice(-4);
         } else {
           recentFailures = [];
-          // think 제외 성공 호출 시그니처 추적 (무한 반복 감지)
-          if (name !== "think") {
-            const sig = name + ":" + JSON.stringify(args).slice(0, 100);
-            recentSuccessSigs.push(sig);
-            if (recentSuccessSigs.length > 6) recentSuccessSigs = recentSuccessSigs.slice(-6);
+          // 파일 변경이 있는 도구면 현재 파일 상태를 "진전 시그니처"로 기록
+          if (["create_file", "edit_file", "delete_file", "bash"].includes(name)) {
+            // 모든 파일 총 용량으로 진전 측정 (파일이 늘거나 내용이 바뀌면 진전으로 판단)
+            const stateSig = [...STATE.files.entries()]
+              .map(([p, c]) => `${p}:${c.length}`).sort().join("|");
+            if (stateSig !== lastProgressSig) {
+              lastProgressSig = stateSig;
+              noProgressCount = 0; // 진전 있음 → 카운터 리셋
+            } else {
+              noProgressCount++;
+            }
           }
         }
 
@@ -2992,22 +3022,19 @@ async function runAgent(userText) {
         if (last.sig === prev.sig) {
           STATE.messages.push({
             role: "user",
-            content: `[시스템] 같은 시도가 반복 실패했습니다: "${last.error.slice(0, 120)}"\n지금 즉시 다른 전략으로 전환:\n1) list_files로 파일 목록 확인\n2) read_file로 실제 내용 확인\n3) 필요시 create_file로 재작성 또는 다른 문자열로 시도\n같은 실패를 3번째 반복하면 안 됩니다.`
+            content: `[시스템] 같은 시도가 반복 실패했습니다: "${last.error.slice(0, 120)}"\n다른 전략으로 전환하세요:\n1) read_file로 실제 파일 내용 확인\n2) 다른 old_str 사용하거나 create_file로 전체 재작성\n같은 방법을 또 시도하지 마세요.`
           });
-          recentFailures = [];  // 개입 후 리셋
+          recentFailures = [];
         }
       }
 
-      // 성공 호출인데 완전히 같은 시그니처가 최근 6개 중 3번 이상 → 강제 완료 촉구
-      if (recentSuccessSigs.length >= 6) {
-        const last3 = recentSuccessSigs.slice(-3);
-        if (last3[0] === last3[1] && last3[1] === last3[2]) {
-          STATE.messages.push({
-            role: "user",
-            content: `[시스템] 같은 작업(${last3[0].split(":")[0]})을 3회 이상 반복했습니다. 이미 완료된 것으로 보입니다. 지금 즉시 finish를 호출하거나, 다음 단계로 넘어가세요.`
-          });
-          recentSuccessSigs = [];
-        }
+      // 파일 변화 없이 4스텝 이상 진행 → 실제로 막혀있음
+      if (noProgressCount >= 4) {
+        noProgressCount = 0;
+        STATE.messages.push({
+          role: "user",
+          content: `[시스템] 파일이 변화 없이 ${4}스텝 진행됐습니다. 실제 작업이 멈췄습니다.\n지금 즉시: read_file로 현재 파일 상태를 확인하고 실질적인 수정을 하거나, 완료됐으면 finish를 호출하세요.`
+        });
       }
 
       if (finished) break;
